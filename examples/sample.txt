@@ -1,0 +1,32 @@
+A map is a symbolic depiction of interrelationships, commonly spatial, between things within a space. A map may be annotated with text and graphics. Like any graphic, a map may be fixed to paper or other durable media, or may be displayed on a transitory medium such as a computer screen. Some maps change interactively. Although maps are commonly used to depict geographic elements, they may represent any space, real or fictional. The subject being mapped may be two-dimensional such as Earth's surface, three-dimensional such as Earth's interior, or from an abstract space of any dimension.
+
+Maps of geographic territory have a very long tradition and have existed from ancient times. The word "map" comes from the medieval Latin: Mappa mundi, wherein mappa meant 'napkin' or 'cloth' and mundi 'of the world'. Thus, "map" became a shortened term referring to a flat representation of Earth's surface.
+
+History
+Main article: History of cartography
+
+Possibly the oldest surviving map was engraved on this mammoth tusk, dated to 25,000 BC, found in Pavlov in the Czech Republic[1]
+
+Tabula Rogeriana, one of the most advanced early world maps, by Muhammad al-Idrisi, 1154
+Maps have been one of the most important human inventions for millennia, allowing humans to explain and navigate their way through the world. The earliest surviving maps include cave paintings and etchings on tusk and stone. Later came extensive maps produced in ancient Babylon, Greece and Rome, China, and India. In their simplest forms, maps are two-dimensional constructs. Since the Classical Greek period, however, maps also have been projected onto globes. The Mercator Projection, developed by Flemish geographer Gerardus Mercator, was widely used as the standard for two-dimensional world maps until the late 20th century, when more accurate projections were more widely used. Mercator also was the first to use and popularize the concept of the atlas: a collection of maps.
+
+Geography
+
+Celestial map by the cartographer Frederik de Wit, 17th century
+Cartography or map-making is the study and practice of crafting representations of the Earth upon a flat surface[2] (see History of cartography), and one who makes maps is called a cartographer or mapmaker.[2]
+
+Road maps are perhaps the most widely used maps today. They are a subset of navigational maps, which also include aeronautical and nautical charts, railroad network maps, and hiking and bicycling maps. In terms of quantity, the largest number of drawn map sheets is probably made up by local surveys, carried out by municipalities, utilities, tax assessors, emergency services providers, and other local agencies. Many national surveying projects have been carried out by the military, such as the British Ordnance Survey: a civilian government agency, internationally renowned for its comprehensively detailed work.
+
+The location information showed by maps may include contour lines, indicating constant values of elevation, temperature, rainfall, etc.
+
+Orientation
+
+The Hereford Mappa Mundi, Hereford Cathedral, England, c. 1300, a classic "T-O" map with Jerusalem at the center, east toward the top, Europe the bottom left and Africa on the right
+The orientation of a map is the geographical direction toward the top of the map. In the Middle Ages many Eurasian maps, including the T and O maps, were drawn with east at the top (meaning that the direction "up" on the map is eastward). The word "orient" is derived from Latin oriens, meaning east. The modern cartographic convention is to put north at the top of a map. This convention is only a few hundred years old.[3]
+
+As no direction is inherently "up" on a spheroidal planet, a variety of orientations have been used on maps both historically and in the present day. Different factors may influence the preferred orientation of a map, depending both on its expected use and cultural factors affecting the perception of each direction. For instance, north and west had historically not been placed at the top of maps made in the Northern Hemisphere as these were the directions where the sun disappeared.[3]
+
+Many maps were oriented to place a particularly significant or holy site at the top. Early Islamic maps often placed south at the top because this was the direction of Mecca relative to the map-makers. Similarly, European Christian maps like the T-O map placed east at the top as this was the direction of the Garden of Eden. Early Chinese maps placed north at the top (despite most Chinese compasses pointing south) due to the location of the imperial capital.[3]
+
+
+Map of Utrecht, Netherlands (1695).

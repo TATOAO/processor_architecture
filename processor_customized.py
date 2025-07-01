@@ -174,7 +174,7 @@ if __name__ == "__main__":
         pipeline = AsyncPipeline([
             RandomRealizationChunkProcessor(),
             AsyncEntityProcessor()
-        ])
+        ], max_concurrent_tasks=1)
         result = await pipeline.run("Alice went to Wonderland. Bob stayed home. Charlie visited Diana. Eve went shopping. Frank cooked dinner. Grace read a book.")
         print("Sync result:", result)
     

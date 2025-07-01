@@ -34,8 +34,10 @@ class Pipeline:
 
 
 class AsyncPipeline(Pipeline):
-    def __init__(self, processors: List[AsyncProcessor]):
+    def __init__(self, processors: List[AsyncProcessor], max_concurrent_tasks: int = 10):
         super().__init__(processors)
+        self.max_concurrent_tasks = max_concurrent_tasks
+        self._semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
     async def run(self, input_data: Any) -> List[Any]:
         if not self.processors:
@@ -64,8 +66,9 @@ class AsyncPipeline(Pipeline):
         tasks = []
         async for item in first_processor.process(initial_stream):
             # Create a task to process this item through remaining processors
+            # Use semaphore to limit concurrent tasks
             task = asyncio.create_task(
-                self._process_through_remaining_processors(item, remaining_processors)
+                self._process_item_with_semaphore(item, remaining_processors)
             )
             tasks.append(task)
         
@@ -82,6 +85,11 @@ class AsyncPipeline(Pipeline):
                     results.append(result)
         
         return results
+    
+    async def _process_item_with_semaphore(self, item: Any, processors: List[AsyncProcessor]) -> List[Any]:
+        """Process an item through processors with semaphore-controlled concurrency"""
+        async with self._semaphore:
+            return await self._process_through_remaining_processors(item, processors)
     
     async def _process_through_remaining_processors(self, item: Any, processors: List[AsyncProcessor]) -> List[Any]:
         """Process an item through the remaining processors"""

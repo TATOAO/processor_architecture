@@ -1,0 +1,10 @@
+{
+  "name": "Document Processing Pipeline",
+  "description": "Extract entities from document chunks",
+  "pipeline": ["chunk", "entity"],
+  "input_text": "Alice went to Wonderland. Bob stayed home. Charlie likes reading books. Diana works at the library.",
+  "settings": {
+    "chunk_delimiter": ".",
+    "entity_types": ["PERSON", "ORGANIZATION", "LOCATION"]
+  }
+} 

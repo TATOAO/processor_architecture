@@ -53,6 +53,7 @@ class Pipeline:
         for step_index, processor in enumerate(self.processors):
             input_data = data
             data = processor.process(data)
+            processor.after_process(input_data, data, execution_id, step_index, *args, **kwargs)
             # Call the callback function
             if callback:
                 callback(processor, input_data, data, execution_id, step_index, *args, **kwargs)
@@ -103,6 +104,8 @@ class AsyncPipeline(Pipeline):
             
             async for item in self.processors[0].process(stream):
                 results.append(item)
+                # Call after_process for each output item
+                await self.processors[0].after_process(input_items, item, execution_id, step_index, *args, **kwargs)
                 # Call callback for each output item
                 if callback:
                     callback(self.processors[0], input_items, item, execution_id, step_index, *args, **kwargs)
@@ -128,6 +131,8 @@ class AsyncPipeline(Pipeline):
         
         async for item in first_processor.process(initial_stream):
             intermediate_results.append(item)
+            # Call after_process for first processor
+            await first_processor.after_process(None, item, execution_id, step_index, *args, **kwargs)
             if callback:
                 callback(first_processor, None, item, execution_id, step_index, *args, **kwargs)
         
@@ -191,6 +196,8 @@ class AsyncPipeline(Pipeline):
             
             async for processed_item in processor.process(stream):
                 processed_items.append(processed_item)
+                # Call after_process for remaining processors
+                await processor.after_process(current_input, processed_item, execution_id, step_index, *args, **kwargs)
                 if callback:
                     callback(processor, current_input, processed_item, execution_id, step_index, *args, **kwargs)
             

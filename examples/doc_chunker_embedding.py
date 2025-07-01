@@ -156,6 +156,13 @@ class VectorGeneratorProcessor(AsyncProcessor):
             async for vector_result in self._generate_vectors_for_chunks(chunks):
                 yield vector_result
     
+    async def after_process(self, input_data: Any, output_data: Any, execution_id: str, step_index: int, *args, **kwargs) -> None:
+        """
+        Override this method to define what should be done after processing data.
+        By default, does nothing. And nothing is returned.
+        """
+        print(f"After process: saving shits: {output_data}")
+    
     async def _generate_vectors_for_chunks(self, chunks: list) -> AsyncGenerator[dict, None]:
         """Generate vectors for each chunk using fake HTTP requests with asyncio.as_completed"""
         

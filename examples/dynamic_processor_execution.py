@@ -8,7 +8,6 @@ This example shows how to:
 4. Use processors created via exec() in pipelines
 """
 
-import asyncio
 import os
 import sys
 
@@ -21,8 +20,7 @@ from processor_pipeline import (
     create_processor_template,
     list_registered_processors,
     create_processor_from_registry,
-    create_pipeline_from_config,
-    Pipeline
+    create_pipeline_from_config
 )
 
 def demonstrate_processor_template():

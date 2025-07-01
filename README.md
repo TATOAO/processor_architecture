@@ -3,7 +3,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A flexible and efficient Python framework for creating and executing data processing pipelines with async support, automatic type checking, and concurrent processing capabilities.
+A flexible and efficient Python framewrk for creating and executing data processing pipelines with async support, automatic type checking, and concurrent processing capabilities.
 
 ## Features
 

@@ -30,6 +30,21 @@ class Processor(ABC, metaclass=ProcessorMeta):
     def process(self, data: Any) -> Any:
         ...
 
+    def after_process(self, input_data: Any, output_data: Any, execution_id: str, step_index: int, *args, **kwargs) -> None:
+        """
+        Override this method to define what should be done after processing data.
+        By default, does nothing. And nothing is returned.
+        
+        Args:
+            input_data: The input data passed to this processor
+            output_data: The output data produced by this processor
+            execution_id: Unique identifier for this pipeline execution
+            step_index: Index of this processor in the pipeline (0-based)
+            *args: Additional arguments passed to this processor
+            **kwargs: Additional keyword arguments passed to this processor
+        """
+        pass
+
     def get_save_data(self, input_data: Any, output_data: Any, execution_id: str, step_index: int) -> Dict[str, Any]:
         """
         Override this method to define what data should be saved for this processor.
@@ -69,6 +84,21 @@ class AsyncProcessor(ABC, metaclass=ProcessorMeta):
     @abstractmethod
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:
         ...
+    
+    async def after_process(self, input_data: Any, output_data: Any, execution_id: str, step_index: int, *args, **kwargs) -> None:
+        """
+        Override this method to define what should be done after processing data.
+        By default, does nothing. And nothing is returned.
+        
+        Args:
+            input_data: The input data passed to this processor
+            output_data: The output data produced by this processor
+            execution_id: Unique identifier for this pipeline execution
+            step_index: Index of this processor in the pipeline (0-based)
+            *args: Additional arguments passed to this processor
+            **kwargs: Additional keyword arguments passed to this processor
+        """
+        pass
 
     def get_save_data(self, input_data: Any, output_data: Any, execution_id: str, step_index: int) -> Dict[str, Any]:
         """

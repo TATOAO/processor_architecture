@@ -11,7 +11,20 @@ from .core.helper import (
     generate_execution_id,
     save_to_json,
     default_callback,
-    create_execution_summary
+    create_execution_summary,
+    # Runtime processor configuration functions
+    list_registered_processors,
+    create_processor_from_registry,
+    create_pipeline_from_config,
+    register_processor_class,
+    create_dynamic_processor,
+    get_pipeline_configuration,
+    save_pipeline_configuration,
+    load_pipeline_from_file,
+    # Code execution functions
+    execute_processor_code,
+    execute_processor_code_from_file,
+    create_processor_template
 )
 
 __version__ = "0.1.0"
@@ -32,4 +45,19 @@ __all__ = [
     "save_to_json", 
     "default_callback",
     "create_execution_summary",
+    
+    # Runtime processor configuration
+    "list_registered_processors",
+    "create_processor_from_registry", 
+    "create_pipeline_from_config",
+    "register_processor_class",
+    "create_dynamic_processor",
+    "get_pipeline_configuration",
+    "save_pipeline_configuration",
+    "load_pipeline_from_file",
+    
+    # Code execution functions
+    "execute_processor_code",
+    "execute_processor_code_from_file",
+    "create_processor_template"
 ]

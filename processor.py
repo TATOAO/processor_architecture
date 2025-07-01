@@ -1,6 +1,6 @@
 
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Any, Dict, Type
+from typing import Any, Dict, Type, AsyncGenerator
 
 class ProcessorMeta(ABCMeta):
     registry: Dict[str, Type["Processor"]] = {}
@@ -28,6 +28,21 @@ class Processor(ABC, metaclass=ProcessorMeta):
 
     @abstractmethod
     def process(self, data: Any) -> Any:
+        ...
+
+    @classmethod
+    def get_meta(cls):
+        return cls.meta
+
+class AsyncProcessor(ABC, metaclass=ProcessorMeta):
+    meta: Dict[str, Any] = {
+        "name": None,
+        "input_type": Any,
+        "output_type": Any,
+    }
+
+    @abstractmethod
+    async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:
         ...
 
     @classmethod

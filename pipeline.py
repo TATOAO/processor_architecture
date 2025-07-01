@@ -1,5 +1,5 @@
-from typing import List, Any, get_origin, get_args, Annotated
-from processor import Processor
+from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator
+from processor import Processor, AsyncProcessor
 
 # --- Type Checking Utility ---
 def match_types(output_type: Any, input_type: Any) -> bool:
@@ -30,3 +30,26 @@ class Pipeline:
         for processor in self.processors:
             data = processor.process(data)
         return data
+
+
+class AsyncPipeline(Pipeline):
+    def __init__(self, processors: List[AsyncProcessor]):
+        super().__init__(processors)
+
+    
+    async def run(self, input_data: Any) -> List[Any]:
+        stream = self._to_async_stream([input_data])  # start with a 1-item stream
+        for processor in self.processors:
+            stream = processor.process(stream)  # each returns a new async generator
+
+        # Collect final output
+        results = []
+        async for item in stream:
+            results.append(item)
+        return results
+
+    def _to_async_stream(self, items: List[Any]) -> AsyncGenerator[Any, None]:
+        async def gen():
+            for item in items:
+                yield item
+        return gen()

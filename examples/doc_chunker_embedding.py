@@ -129,6 +129,10 @@ class TextChunkerProcessor(AsyncProcessor):
                 break
         
         return chunks
+
+    async def after_process(self, input_data: Any, output_data: Any, execution_id: str, step_index: int, *args, **kwargs) -> None:
+        # await asyncio.sleep(1)
+        print('-'*50, f"After process: {output_data}")
     
     def get_save_data(self, input_data: Any, output_data: Any, execution_id: str, step_index: int) -> Dict[str, Any]:
         base_data = super().get_save_data(input_data, output_data, execution_id, step_index)

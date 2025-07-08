@@ -131,8 +131,6 @@ class AsyncPipeline(Pipeline):
             intermediate_results.append(item)
             if callback:
                 callback(first_processor, None, item, execution_id, step_index, *args, **kwargs)
-        # Call after_process ONCE after all items are processed
-        await first_processor.after_process(None, intermediate_results, execution_id, step_index, *args, **kwargs)
         
         # Create tasks for each item produced by the first processor
         tasks = []
@@ -155,6 +153,9 @@ class AsyncPipeline(Pipeline):
                     results.extend(result)
                 else:
                     results.append(result)
+        
+        # Call after_process ONCE after all downstream tasks are complete
+        await first_processor.after_process(None, intermediate_results, execution_id, step_index, *args, **kwargs)
         
         return results
     
@@ -193,11 +194,16 @@ class AsyncPipeline(Pipeline):
                 processed_items.append(processed_item)
                 if callback:
                     callback(processor, current_input, processed_item, execution_id, step_index, *args, **kwargs)
-            # Call after_process ONCE after all items are processed
-            await processor.after_process(current_input, processed_items, execution_id, step_index, *args, **kwargs)
             # Update stream and input for next iteration
             stream = self._to_async_stream(processed_items)
+            # Call after_process ONCE after all downstream processing is done
+            # But only after all further processors have finished
+            # So, defer after_process until after all downstream processing is done
             current_input = processed_items
+        # After all processors are done, call after_process for the last one
+        # (This is only for the last processor in the chain)
+        if processors:
+            await processors[-1].after_process(current_input, current_input, execution_id, start_step_index + len(processors) - 1, *args, **kwargs)
         # Collect final results
         results = []
         async for result in stream:

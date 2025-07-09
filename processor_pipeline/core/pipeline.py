@@ -96,54 +96,93 @@ class AsyncPipeline(Pipeline):
         if not self.processors:
             return [input_data]
         
-        # Create the initial stream
-        stream = self._to_async_stream([input_data])
-        
-        # If only one processor, process normally
+        # For true streaming, we'll use a pipe mechanism with queues
+        return await self._run_streaming_pipeline(input_data, execution_id, callback, *args, **kwargs)
+
+    async def _run_streaming_pipeline(self, input_data: Any, execution_id: str, 
+                                    callback: Callable, *args, **kwargs) -> List[Any]:
+        """
+        Run the pipeline with true streaming using asyncio.Queue for real-time data flow.
+        """
         if len(self.processors) == 1:
+            # Single processor case
+            stream = self._to_async_stream([input_data])
             results = []
-            input_items = [input_data]  # Track input for callback
-            step_index = 0
             async for item in self.processors[0].process(stream):
                 results.append(item)
-                # Call callback for each output item
-                callback(self.processors[0], input_items, item, execution_id, step_index, *args, **kwargs)
-            # Call after_process ONCE after all items are processed
-            await self.processors[0].after_process(input_items, results, execution_id, step_index, *args, **kwargs)
+                if callback:
+                    callback(self.processors[0], input_data, item, execution_id, 0, *args, **kwargs)
+            await self.processors[0].after_process(input_data, results, execution_id, 0, *args, **kwargs)
             return results
         
-        # For multiple processors, process sequentially to ensure proper after_process timing
-        current_stream = stream
-        current_input = [input_data]
+        # Multiple processors - create streaming pipes
+        queues = [asyncio.Queue() for _ in range(len(self.processors) + 1)]
+        final_results = []
         
-        for step_index, processor in enumerate(self.processors):
-            # Collect all items from current stream
-            current_items = []
-            async for item in current_stream:
-                current_items.append(item)
-            
-            if not current_items:
-                break
-            
-            # Process through current processor
-            processor_stream = self._to_async_stream(current_items)
-            processed_items = []
-            
-            async for processed_item in processor.process(processor_stream):
-                processed_items.append(processed_item)
-                # Call callback for each output item
-                if callback:
-                    callback(processor, current_input, processed_item, execution_id, step_index, *args, **kwargs)
-            
-            # Call after_process ONCE after all items are processed by this processor
-            await processor.after_process(current_input, processed_items, execution_id, step_index, *args, **kwargs)
-            
-            # Update for next iteration
-            current_stream = self._to_async_stream(processed_items)
-            current_input = processed_items
+        # Start all processor tasks
+        tasks = []
+        for i, processor in enumerate(self.processors):
+            task = asyncio.create_task(
+                self._run_processor_with_queue(
+                    processor, queues[i], queues[i + 1], 
+                    input_data, execution_id, i, callback, *args, **kwargs
+                )
+            )
+            tasks.append(task)
         
-        return current_input
+        # Feed initial data to first queue
+        await queues[0].put(input_data)
+        await queues[0].put(None)  # Sentinel to indicate end
+        
+        # Wait for all processors to complete
+        await asyncio.gather(*tasks)
+        
+        # Collect final results from last queue
+        while not queues[-1].empty():
+            item = await queues[-1].get()
+            if item is not None:
+                final_results.append(item)
+        
+        return final_results
+
+    async def _run_processor_with_queue(self, processor: AsyncProcessor, 
+                                      input_queue: asyncio.Queue, output_queue: asyncio.Queue,
+                                      input_data: Any, execution_id: str, step_index: int,
+                                      callback: Callable, *args, **kwargs):
+        """
+        Run a single processor with input and output queues for streaming.
+        """
+        # Create input stream from queue
+        async def input_stream():
+            while True:
+                item = await input_queue.get()
+                if item is None:  # Sentinel
+                    break
+                yield item
+        
+        # Process items and put them in output queue
+        processed_items = []
+        async for processed_item in processor.process(input_stream()):
+            processed_items.append(processed_item)
+            await output_queue.put(processed_item)
+            if callback:
+                callback(processor, input_data, processed_item, execution_id, step_index, *args, **kwargs)
+        
+        # Call after_process
+        await processor.after_process(input_data, processed_items, execution_id, step_index, *args, **kwargs)
+        
+        # Put sentinel in output queue
+        await output_queue.put(None)
 
     async def _to_async_stream(self, items: List[Any]) -> AsyncGenerator[Any, None]:
         for item in items:
             yield item
+
+    async def _create_streaming_pipe(self, input_data: Any) -> AsyncGenerator[Any, None]:
+        """
+        Create a streaming pipe that allows immediate flow between processors.
+        This is a more advanced implementation for true streaming.
+        """
+        # For now, we'll use the simpler approach above
+        # This method can be enhanced later for more complex streaming scenarios
+        pass

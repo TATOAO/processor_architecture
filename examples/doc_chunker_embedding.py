@@ -104,6 +104,7 @@ class TextChunkerProcessor(AsyncProcessor):
     
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[list, None]:
         async for text in data:
+            await asyncio.sleep(1)
             chunks = self._chunk_text(text, self.window_size, self.overlap)
             yield chunks
     
@@ -201,7 +202,7 @@ class VectorGeneratorProcessor(AsyncProcessor):
     async def _fake_http_request(self, text: str) -> float:
         """Simulate HTTP request to generate vector from text"""
         # Random delay to simulate network request
-        delay = random.random()  # 0-1 seconds
+        delay = random.random() * 10  # 0-10 seconds
         await asyncio.sleep(delay)
         return delay
     

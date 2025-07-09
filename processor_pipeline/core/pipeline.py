@@ -112,103 +112,37 @@ class AsyncPipeline(Pipeline):
             await self.processors[0].after_process(input_items, results, execution_id, step_index, *args, **kwargs)
             return results
         
-        # For multiple processors, use concurrent streaming
-        results = await self._run_concurrent_streaming_with_callbacks(stream, execution_id, callback, *args, **kwargs)
-        return results
-    
-    async def _run_concurrent_streaming_with_callbacks(self, initial_stream: AsyncGenerator[Any, None], 
-                                                      execution_id: str, callback: Optional[Callable],
-                                                      *args, **kwargs) -> List[Any]:
-        """Run with concurrent streaming and callback support"""
-        # Process through first processor with callbacks
-        first_processor = self.processors[0]
-        remaining_processors = self.processors[1:]
+        # For multiple processors, process sequentially to ensure proper after_process timing
+        current_stream = stream
+        current_input = [input_data]
         
-        # Collect intermediate results and call callbacks
-        intermediate_results = []
-        step_index = 0
-        async for item in first_processor.process(initial_stream):
-            intermediate_results.append(item)
-            if callback:
-                callback(first_processor, None, item, execution_id, step_index, *args, **kwargs)
-        
-        # Create tasks for each item produced by the first processor
-        tasks = []
-        for item in intermediate_results:
-            task = asyncio.create_task(
-                self._process_item_with_semaphore_and_callbacks(
-                    item, remaining_processors, execution_id, callback, step_index + 1
-                )
-            )
-            tasks.append(task)
-        
-        # Wait for all tasks to complete
-        results = []
-        if tasks:
-            completed_results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in completed_results:
-                if isinstance(result, Exception):
-                    raise result
-                if isinstance(result, list):
-                    results.extend(result)
-                else:
-                    results.append(result)
-        
-        # Call after_process ONCE after all downstream tasks are complete
-        await first_processor.after_process(None, intermediate_results, execution_id, step_index, *args, **kwargs)
-        
-        return results
-    
-    async def _process_item_with_semaphore_and_callbacks(self, item: Any, processors: List[AsyncProcessor], 
-                                                        execution_id: str, callback: Optional[Callable],
-                                                        start_step_index: int, *args, **kwargs) -> List[Any]:
-        """Process an item through processors with semaphore-controlled concurrency and callbacks"""
-        async with self._semaphore:
-            return await self._process_through_remaining_processors_with_callbacks(
-                item, processors, execution_id, callback, start_step_index, 
-                *args, **kwargs
-            )
-    
-    async def _process_through_remaining_processors_with_callbacks(self, item: Any, processors: List[AsyncProcessor],
-                                                                  execution_id: str, callback: Optional[Callable],
-                                                                  start_step_index: int, *args, **kwargs) -> List[Any]:
-        """Process an item through the remaining processors with callbacks"""
-        if not processors:
-            return [item]
-        
-        # Create a stream with this single item
-        stream = self._to_async_stream([item])
-        current_input = item
-        
-        # Process through remaining processors
-        for i, processor in enumerate(processors):
-            step_index = start_step_index + i
-            current_stream_items = []
+        for step_index, processor in enumerate(self.processors):
             # Collect all items from current stream
-            async for stream_item in stream:
-                current_stream_items.append(stream_item)
+            current_items = []
+            async for item in current_stream:
+                current_items.append(item)
+            
+            if not current_items:
+                break
+            
             # Process through current processor
-            stream = self._to_async_stream(current_stream_items)
+            processor_stream = self._to_async_stream(current_items)
             processed_items = []
-            async for processed_item in processor.process(stream):
+            
+            async for processed_item in processor.process(processor_stream):
                 processed_items.append(processed_item)
+                # Call callback for each output item
                 if callback:
                     callback(processor, current_input, processed_item, execution_id, step_index, *args, **kwargs)
-            # Update stream and input for next iteration
-            stream = self._to_async_stream(processed_items)
-            # Call after_process ONCE after all downstream processing is done
-            # But only after all further processors have finished
-            # So, defer after_process until after all downstream processing is done
+            
+            # Call after_process ONCE after all items are processed by this processor
+            await processor.after_process(current_input, processed_items, execution_id, step_index, *args, **kwargs)
+            
+            # Update for next iteration
+            current_stream = self._to_async_stream(processed_items)
             current_input = processed_items
-        # After all processors are done, call after_process for the last one
-        # (This is only for the last processor in the chain)
-        if processors:
-            await processors[-1].after_process(current_input, current_input, execution_id, start_step_index + len(processors) - 1, *args, **kwargs)
-        # Collect final results
-        results = []
-        async for result in stream:
-            results.append(result)
-        return results
+        
+        return current_input
 
     async def _to_async_stream(self, items: List[Any]) -> AsyncGenerator[Any, None]:
         for item in items:

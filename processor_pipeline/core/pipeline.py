@@ -1,4 +1,4 @@
-from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator, Optional, Callable
+from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator, Optional, Callable, Union
 from .helper import generate_execution_id, default_callback
 from .processor import Processor, AsyncProcessor
 import asyncio
@@ -10,7 +10,15 @@ def match_types(output_type: Any, input_type: Any) -> bool:
             return get_args(t)[0]
         return t
 
-    return resolve(output_type) == resolve(input_type)
+    resolved_output = resolve(output_type)
+    resolved_input = resolve(input_type)
+
+    # If input_type is a Union, check if output_type matches any of its types
+    if get_origin(resolved_input) is Union:
+        input_args = get_args(resolved_input)
+        return any(resolved_output == resolve(arg) for arg in input_args)
+    else:
+        return resolved_output == resolved_input
 
 class Pipeline:
     def __init__(self, processors: List[Processor]):

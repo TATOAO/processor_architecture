@@ -235,12 +235,17 @@ class AsyncPipeline(Pipeline):
                             break
                         yield item
                 processed_items = []
-                async for processed_item in proc.process(input_stream()):
-                    processed_items.append(processed_item)
-                    await out_q.put(processed_item)
-                    callback(proc, None, processed_item, execution_id, step_idx, *args, **kwargs)
-                await proc.after_process(None, processed_items, execution_id, step_idx, *args, **kwargs)
-                await out_q.put(None)
+                try:
+                    async for processed_item in proc.process(input_stream()):
+                        processed_items.append(processed_item)
+                        await out_q.put(processed_item)
+                        callback(proc, None, processed_item, execution_id, step_idx, *args, **kwargs)
+                    await proc.after_process(None, processed_items, execution_id, step_idx, *args, **kwargs)
+                except Exception as e:
+                    print(f"Error in processor {proc.meta['name']}: {e}")
+                    await out_q.put(None)
+                finally:
+                    await out_q.put(None)
             tasks.append(asyncio.create_task(run_proc(processor, queues[i], queues[i+1], i)))
         # Feed initial data to first queue
         await queues[0].put(input_data)

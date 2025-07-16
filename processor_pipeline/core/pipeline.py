@@ -194,3 +194,62 @@ class AsyncPipeline(Pipeline):
         # For now, we'll use the simpler approach above
         # This method can be enhanced later for more complex streaming scenarios
         pass
+
+    async def astream(self, input_data: Any, execution_id: Optional[str] = None,
+                     callback: Optional[Callable] = None, *args, **kwargs) -> AsyncGenerator[Any, None]:
+        """
+        Async generator that yields each item as soon as it is produced by the last processor.
+        Args:
+            input_data: Input data for the pipeline
+            execution_id: Optional execution ID (auto-generated if not provided)
+            callback: Optional callback function called after each processor step
+                     Signature: callback(processor, input_data, output_data, execution_id, step_index)
+            output_dir: Directory for saving outputs (used by default callback)
+        Yields:
+            Each item as soon as it is produced by the last processor.
+        """
+        if execution_id is None:
+            execution_id = generate_execution_id()
+        if callback is None:
+            callback = default_callback
+        if not self.processors:
+            return
+        if len(self.processors) == 1:
+            # Single processor: yield each item as processed
+            stream = self._to_async_stream([input_data])
+            async for item in self.processors[0].process(stream):
+                callback(self.processors[0], input_data, item, execution_id, 0, *args, **kwargs)
+                yield item
+            await self.processors[0].after_process(input_data, None, execution_id, 0, *args, **kwargs)
+            return
+        # Multiple processors: use queues to connect them
+        queues = [asyncio.Queue() for _ in range(len(self.processors) + 1)]
+        # Start all processor tasks
+        tasks = []
+        for i, processor in enumerate(self.processors):
+            async def run_proc(proc, in_q, out_q, step_idx):
+                async def input_stream():
+                    while True:
+                        item = await in_q.get()
+                        if item is None:
+                            break
+                        yield item
+                processed_items = []
+                async for processed_item in proc.process(input_stream()):
+                    processed_items.append(processed_item)
+                    await out_q.put(processed_item)
+                    callback(proc, None, processed_item, execution_id, step_idx, *args, **kwargs)
+                await proc.after_process(None, processed_items, execution_id, step_idx, *args, **kwargs)
+                await out_q.put(None)
+            tasks.append(asyncio.create_task(run_proc(processor, queues[i], queues[i+1], i)))
+        # Feed initial data to first queue
+        await queues[0].put(input_data)
+        await queues[0].put(None)
+        # Yield from the last queue as soon as items are available
+        while True:
+            item = await queues[-1].get()
+            if item is None:
+                break
+            yield item
+        # Wait for all processors to finish
+        await asyncio.gather(*tasks)

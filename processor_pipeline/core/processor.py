@@ -26,6 +26,10 @@ class Processor(ABC, metaclass=ProcessorMeta):
         "output_type": Any,
     }
 
+    def __init__(self):
+        """Initialize the processor with an empty session dict for sharing data between processors."""
+        self.session: Dict[str, Any] = {}
+
     @abstractmethod
     def process(self, data: Any) -> Any:
         ...
@@ -80,6 +84,10 @@ class AsyncProcessor(ABC, metaclass=ProcessorMeta):
         "input_type": Any,
         "output_type": Any,
     }
+
+    def __init__(self):
+        """Initialize the processor with an empty session dict for sharing data between processors."""
+        self.session: Dict[str, Any] = {}
 
     @abstractmethod
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:

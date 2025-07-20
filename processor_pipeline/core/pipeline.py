@@ -1,4 +1,4 @@
-from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator, Optional, Callable, Union
+from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator, Optional, Callable, Union, Dict
 from .helper import generate_execution_id, default_callback
 from .processor import Processor, AsyncProcessor
 import asyncio
@@ -24,6 +24,11 @@ class Pipeline:
     def __init__(self, processors: List[Processor]):
         self.processors = processors
         self._check_compatibility()
+        # Initialize shared session for all processors
+        self.session: Dict[str, Any] = {}
+        # Set the session for each processor
+        for processor in self.processors:
+            processor.session = self.session
 
     def _check_compatibility(self):
         for i in range(len(self.processors) - 1):

@@ -13,8 +13,11 @@ def match_types(output_type: Any, input_type: Any) -> bool:
     resolved_output = resolve(output_type)
     resolved_input = resolve(input_type)
 
+    # If both are Unions, compare their args as sets
+    if get_origin(resolved_output) is Union and get_origin(resolved_input) is Union:
+        return set(get_args(resolved_output)) == set(get_args(resolved_input))
     # If input_type is a Union, check if output_type matches any of its types
-    if get_origin(resolved_input) is Union:
+    elif get_origin(resolved_input) is Union:
         input_args = get_args(resolved_input)
         return any(resolved_output == resolve(arg) for arg in input_args)
     else:

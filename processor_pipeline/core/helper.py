@@ -40,7 +40,7 @@ def default_callback(processor: Any, input_data: Any, output_data: Any,
         output_dir: Directory to save the output files
     """
     save_data = processor.get_save_data(input_data, output_data, execution_id, step_index)
-    logger.info(f"Callback: log processing data for processor {processor.meta.get('name', 'unknown')} \n{save_data}")
+    logger.debug(f"Callback: log processing data for processor {processor.meta.get('name', 'unknown')} \n{save_data}")
 
 def create_execution_summary(execution_id: str, processors: list, total_time: float, 
                            input_data: Any, final_output: Any, 
@@ -210,7 +210,7 @@ class MyCustomProcessor(Processor):
         
         # Log registration
         for processor_name in new_processors:
-            logger.info(f"Registered processor via code execution: {processor_name}")
+            logger.debug(f"Registered processor via code execution: {processor_name}")
         
         return list(new_processors)
         

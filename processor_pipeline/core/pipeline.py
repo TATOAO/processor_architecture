@@ -250,8 +250,10 @@ class AsyncPipeline(Pipeline):
                         callback(proc, None, processed_item, execution_id, step_idx, *args, **kwargs)
                     await proc.after_process(None, processed_items, execution_id, step_idx, *args, **kwargs)
                 except Exception as e:
-                    print(f"Error in processor {proc.meta['name']}: {e}")
+                    # Put the exception into the output queue to propagate it
+                    await out_q.put(e)
                     await out_q.put(None)
+                    return
                 finally:
                     await out_q.put(None)
             tasks.append(asyncio.create_task(run_proc(processor, queues[i], queues[i+1], i)))
@@ -263,6 +265,11 @@ class AsyncPipeline(Pipeline):
             item = await queues[-1].get()
             if item is None:
                 break
+            if isinstance(item, Exception):
+                # Cancel all running tasks before raising
+                for t in tasks:
+                    t.cancel()
+                raise item
             yield item
         # Wait for all processors to finish
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)

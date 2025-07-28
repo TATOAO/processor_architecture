@@ -1,6 +1,7 @@
 from typing import List, Any, get_origin, get_args, Annotated, AsyncGenerator, Optional, Callable, Union, Dict
 from .helper import generate_execution_id, default_callback
 from .processor import Processor, AsyncProcessor
+from logging import Logger
 import asyncio
 
 # --- Type Checking Utility ---
@@ -32,6 +33,9 @@ class Pipeline:
         # Set the session for each processor
         for processor in self.processors:
             processor.session = self.session
+        
+    def register_logger(self, logger: Logger):
+        self.session["logger"] = logger
 
     def _check_compatibility(self):
         for i in range(len(self.processors) - 1):

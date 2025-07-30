@@ -18,7 +18,7 @@ class TestProcessor(AsyncProcessor):
         #### default config ####
         "input_pipe_type": "AsyncPipe",
         "output_pipe_type": "AsyncPipe",
-        "output_strategy": "asap",
+        "output_strategy": "",
         "max_concurrent": 100,
 
         #### metadata ####

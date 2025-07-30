@@ -32,6 +32,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     "pydantic>=2.0.0",
+    "networkx>=3.0.0",
 ]
 
 [project.optional-dependencies]

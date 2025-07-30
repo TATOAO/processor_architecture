@@ -43,15 +43,9 @@ class PipeMeta(ABCMeta):
 class PipeInterface(ABC):
     """Interface for data pipes between processors"""
 
-    @property
-    @abstractmethod
-    def pipe_id(self) -> str:
-        """Unique identifier for this pipe"""
-        pass
-    
     
     @abstractmethod
-    async def put(self, data: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+    async def put(self, data: Any) -> None:
         """Asynchronously put data into the pipe"""
         pass
     
@@ -89,29 +83,6 @@ class PipeInterface(ABC):
 class ProcessorInterface(ABC):
     """Interface for processors in the graph"""
     
-    @property
-    @abstractmethod
-    def processor_id(self) -> str:
-        """Unique identifier for this processor"""
-        pass
-    
-    @property
-    @abstractmethod
-    def input_pipes(self) -> Dict[str, PipeInterface]:
-        """Dictionary of input pipes by name"""
-        pass
-    
-    @property
-    @abstractmethod
-    def output_pipes(self) -> Dict[str, PipeInterface]:
-        """Dictionary of output pipes by name"""
-        pass
-    
-    @classmethod
-    @abstractmethod
-    def get_processor_metadata(cls) -> Dict[str, Any]:
-        """Get metadata for processor registration (name, input_type, output_type, etc.)"""
-        pass
     
     @abstractmethod
     def register_input_pipe(self, pipe: PipeInterface) -> None:
@@ -127,7 +98,12 @@ class ProcessorInterface(ABC):
     async def execute(self) -> None:
         """Execute the processor"""
         pass
-    
+
+    @abstractmethod
+    async def astream(self, input_data: Any) -> AsyncGenerator[Any, None]:
+        """Process data without blocking"""
+        pass
+
     @abstractmethod
     async def process(self, input_data: Any) -> AsyncGenerator[Any, None]:
         """Main processing method - reads from input pipes, processes, writes to output pipes"""

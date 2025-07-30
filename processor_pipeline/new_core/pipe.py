@@ -1,7 +1,7 @@
+import asyncio
+from logging import Logger
 from .core_interfaces import PipeInterface
-from typing import Any, Optional, Dict
-from asyncio import Queue
-
+from typing import Any, Optional, Dict, AsyncGenerator
 from pydantic import BaseModel
 
 
@@ -23,27 +23,34 @@ class AsyncPipe(PipeInterface):
     Attributes:
         queue (asyncio.Queue): The underlying queue for storing data.
     """
-    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None):
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: Logger = Logger("AsyncPipe")):
         ### core attributes
-        self.pipe_id = pipe_id
-        self.queue = Queue(maxsize)
-
+        self._pipe_id = pipe_id
+        self.queue = asyncio.Queue(maxsize)
+        self.logger = logger
 
         #### metadata
         self.metadata = {}
         self.statistics = PipeStatistics()
 
 
-    async def put(self, data: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+    async def put(self, data: Any) -> None:
         self.statistics.historic_put_count += 1
-        await self.queue.put((data, metadata))
+        await self.queue.put(data)
 
     async def get(self, timeout: Optional[float] = None) -> Any:
         self.statistics.historic_get_count += 1
-        return await self.queue.get(timeout)
+        return await self.queue.get()
+    
+    async def __aiter__(self) -> AsyncGenerator[Any, None]:
+        while True:
+            data = await self.get()
+            if data is None:
+                break
+            yield data
 
     async def is_empty(self) -> bool:
-        return await self.queue.empty()
+        return self.queue.empty()
     
     async def size(self) -> int:
         return self.queue.qsize()

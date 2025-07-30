@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from logging import Logger
-from .core_interfaces import PipeInterface
+from .core_interfaces import PipeInterface, PipeMeta
 from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple
 from pydantic import BaseModel
 from collections import deque
@@ -16,7 +16,7 @@ class PipeStatistics(BaseModel):
     historic_get_count: int = 0
 
 
-class AsyncPipe(PipeInterface):
+class AsyncPipe(PipeInterface, metaclass=PipeMeta):
     """
     Asynchronous pipe implementation using asyncio.Queue.
 

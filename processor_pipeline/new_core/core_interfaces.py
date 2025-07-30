@@ -5,6 +5,7 @@ These interfaces define the contracts for all major components in the system,
 enabling extensibility and clear separation of concerns.
 """
 
+import inspect
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Any, Dict, List, Optional, Callable, Type, AsyncGenerator
 
@@ -15,8 +16,29 @@ class ProcessorMeta(ABCMeta):
         cls = super().__new__(mcs, name, bases, namespace)
         if "meta" in namespace:
             meta = namespace["meta"]
+            # Store the complete meta information on the class
+            cls._meta = meta
             if "name" in meta:
                 mcs.registry[meta["name"]] = cls
+        
+        # Validate process method signature
+        if "process" in namespace:
+            process_method = namespace["process"]
+            if hasattr(process_method, "__code__"):
+                sig = inspect.signature(process_method)
+                params = list(sig.parameters.values())
+                
+                # Check if the method accepts *args and **kwargs
+                has_var_args = any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in params)
+                has_var_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params)
+                
+                if not (has_var_args and has_var_kwargs):
+                    raise TypeError(
+                        f"Process method in {name} must accept *args and **kwargs. "
+                        f"Current signature: {sig}. "
+                        f"Please define it as: async def process(self, input_data: Any, *args, **kwargs) -> AsyncGenerator[Any, None]:"
+                    )
+        
         return cls
 
     @classmethod
@@ -105,7 +127,7 @@ class ProcessorInterface(ABC):
         pass
 
     @abstractmethod
-    async def process(self, input_data: Any) -> AsyncGenerator[Any, None]:
+    async def process(self, input_data: Any, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """Main processing method - reads from input pipes, processes, writes to output pipes"""
         pass
     

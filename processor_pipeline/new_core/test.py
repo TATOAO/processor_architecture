@@ -11,6 +11,22 @@ class TestProcessor(AsyncProcessor):
     Test processor.
     """
 
+    meta = {
+        "name": "TestProcessor",
+        "description": "Test processor",
+
+        #### default config ####
+        "input_pipe_type": "AsyncPipe",
+        "output_pipe_type": "AsyncPipe",
+        "output_strategy": "asap",
+        "max_concurrent": 100,
+
+        #### metadata ####
+        "version": "1.0.0",
+        "author": "Test Author",
+        "email": "test@test.com",
+    }
+
     async def process(self, data: Any, *args, **kwargs) -> Any:
         # await asyncio.sleep(random.randint(1, 10))
 
@@ -22,8 +38,7 @@ class TestProcessor(AsyncProcessor):
 
         if data == 2:
             await asyncio.sleep(0.5)
-            raise Exception("Test exception")
-
+            # raise Exception("Test exception")
 
         try:
             pass
@@ -41,7 +56,13 @@ if __name__ == "__main__":
 
     import time
     async def main():
-        processor = TestProcessor("processor_id_test1", input_pipe, output_pipe, output_strategy="ordered", max_concurrent=10)
+        processor = TestProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
+
+        print('processor meta 1', processor._meta)
+        print('processor meta 2', processor._meta.get('max_concurrent'))
+        print('processor meta 3', processor.semaphore)
+        print('processor meta 4', processor.processor_id)
+
         # max_concurent is not going to work since all task are io bounded
         await input_pipe.put(1)
         await input_pipe.put(2)

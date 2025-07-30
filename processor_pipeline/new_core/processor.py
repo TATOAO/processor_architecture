@@ -1,10 +1,11 @@
+import uuid
 import asyncio
 import traceback
 from enum import Enum
 from collections import deque
 from logging import Logger
-from typing import Any, AsyncGenerator, Dict, List
-from .core_interfaces import ProcessorInterface, PipeInterface
+from typing import Any, AsyncGenerator, Dict, List, Optional
+from .core_interfaces import ProcessorInterface, PipeInterface, ProcessorMeta
 from .pipe import BufferPipe
 from pydantic import BaseModel, computed_field
 
@@ -43,7 +44,7 @@ class OutputStrategy(Enum):
                 return member
         raise ValueError(f"Invalid output strategy: {value}")
 
-class AsyncProcessor(ProcessorInterface):
+class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
     """
     Processor implementation.
 
@@ -52,16 +53,34 @@ class AsyncProcessor(ProcessorInterface):
         input_pipe (PipeInterface): The input pipe for the processor.
         output_pipe (PipeInterface): The output pipe for the processor.
     """
-    def __init__(self, processor_id: str, 
-            input_pipe: PipeInterface, 
-            output_pipe: PipeInterface, 
-            output_strategy: str = "asap",
-            logger: Logger = Logger("AsyncProcessor"), 
-            max_concurrent: int = 10):
+    def __init__(self, 
+            processor_id: Optional[str] = None, 
+            input_pipe: PipeInterface = ..., 
+            output_pipe: PipeInterface = ..., 
+            output_strategy: str = None,
+            logger: Logger = None, 
+            max_concurrent: int = None):
 
-        self.processor_id = processor_id
+
+
         self.input_pipe = input_pipe
         self.output_pipe = output_pipe
+        
+        # Use meta values as defaults if available
+        meta = getattr(self.__class__, '_meta', {})
+
+        self.processor_id = processor_id
+        if self.processor_id is None:
+            self.processor_id = f"{meta['name']}_{str(uuid.uuid4())}"
+        
+        # Set defaults from meta or fallback values
+        if output_strategy is None:
+            output_strategy = meta.get('output_strategy', 'ordered')
+        if logger is None:
+            logger = Logger(meta.get('name', 'AsyncProcessor'))
+        if max_concurrent is None:
+            max_concurrent = meta.get('max_concurrent', 10)
+            
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
         # output strategy type

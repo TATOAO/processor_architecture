@@ -10,14 +10,11 @@ class TestProcessor(AsyncProcessor):
     """
     Test processor.
     """
-    def __init__(self, processor_id: str, input_pipe: AsyncPipe, output_pipe: AsyncPipe):
-        super().__init__(processor_id, input_pipe, output_pipe)
 
     async def process(self, data: Any) -> Any:
         # await asyncio.sleep(random.randint(1, 10))
 
-        self.logger.warning(f"{TestProcessor.__name__} processing data: {data}")
-        s = random.randint(1, 10)
+        s = random.random() * data
         self.logger.warning(f"{TestProcessor.__name__} processing time: {s} seconds")
         # await asyncio.sleep(1)
         await asyncio.sleep(s)
@@ -32,8 +29,7 @@ if __name__ == "__main__":
 
     import time
     async def main():
-        processor = TestProcessor("processor_id_test1", input_pipe, output_pipe)
-        start_time = time.time()
+        processor = TestProcessor("processor_id_test1", input_pipe, output_pipe, output_strategy="ordered")
         await input_pipe.put(1)
         await input_pipe.put(2)
         await input_pipe.put(3)
@@ -44,6 +40,7 @@ if __name__ == "__main__":
         # result = await processor.execute()
         # print(result)
 
+        start_time = time.time()
         async for data in processor.astream():
             print(data)
 

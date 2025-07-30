@@ -1,8 +1,8 @@
 import asyncio
 from typing import Any, AsyncGenerator, Dict, List
 from logging import Logger
+from enum import Enum
 from .core_interfaces import ProcessorInterface, PipeInterface
-
 from pydantic import BaseModel, computed_field
 
 
@@ -25,6 +25,20 @@ class ProcessorStatistics(BaseModel):
             max(self.historic_process_time)
         ]
 
+class OutputStrategy(Enum):
+    """
+    Output strategy.
+    """
+    ASAP = "asap"
+    ORDERED = "ordered"
+    
+    @classmethod
+    def from_string(cls, value: str) -> "OutputStrategy":
+        """Create an OutputStrategy from a string value."""
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid output strategy: {value}")
 
 class AsyncProcessor(ProcessorInterface):
     """
@@ -35,13 +49,26 @@ class AsyncProcessor(ProcessorInterface):
         input_pipe (PipeInterface): The input pipe for the processor.
         output_pipe (PipeInterface): The output pipe for the processor.
     """
-    def __init__(self, processor_id: str, input_pipe: PipeInterface, output_pipe: PipeInterface, logger: Logger = Logger("AsyncProcessor"), max_concurrent: int = 10):
+    def __init__(self, processor_id: str, 
+            input_pipe: PipeInterface, 
+            output_pipe: PipeInterface, 
+            output_strategy: str = "asap",
+            logger: Logger = Logger("AsyncProcessor"), 
+            max_concurrent: int = 10):
+
         self.processor_id = processor_id
         self.input_pipe = input_pipe
         self.output_pipe = output_pipe
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
+        # output strategy type
+        self.output_strategy = OutputStrategy.from_string(output_strategy)
+
+    
+        # tasks
         self.tasks = []
+
+        # statistics
         self.statistics = ProcessorStatistics()
 
         # format logger
@@ -55,8 +82,7 @@ class AsyncProcessor(ProcessorInterface):
 
         main_processing_task = asyncio.create_task(self.execute())
         async for data in self.output_pipe:
-            # yield data
-            yield self.tasks
+            yield data
 
         await main_processing_task
 
@@ -71,38 +97,27 @@ class AsyncProcessor(ProcessorInterface):
 
         async with self.semaphore:
             async for data in self.input_pipe:
-                task = asyncio.create_task(self.process_without_blocking(data))
+                task = asyncio.create_task(self.process(data))
                 self.tasks.append(task) 
 
-            result = await asyncio.gather(*self.tasks)
+
+            if self.output_strategy == OutputStrategy.ASAP:
+                for task in asyncio.as_completed(self.tasks):
+                    result = await task
+                    await self.output_pipe.put(result)
+
+            elif self.output_strategy == OutputStrategy.ORDERED:
+                for task in self.tasks:
+                    result = await task
+                    await self.output_pipe.put(result)
+
+
             # tell the output pipe that we are done
             await self.output_pipe.close()
 
-            return result
+            return await asyncio.gather(*self.tasks)
 
     
-    async def process_without_blocking(self, input_data: Any) -> None:
-        """
-        Process data without blocking.
-        """
-        async with self.semaphore:
-            result = await self.process(input_data)
-            await self.output_pipe.put(result)
-            return result
-    
-
-    # async def output_strategy(self, strategy: str) -> None:
-    #     """
-    #     Output strategy.
-    #     """
-    #     if strategy == "blocking":
-    #         await self.output_pipe.put(result)
-    #     elif strategy == "non_blocking":
-    #         pass
-    #     else:
-    #         raise ValueError(f"Invalid output strategy: {strategy}")
-
-
     async def initialize(self) -> None:
         pass
     

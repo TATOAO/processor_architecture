@@ -15,10 +15,15 @@ class TestProcessor(AsyncProcessor):
         # await asyncio.sleep(random.randint(1, 10))
 
         print(f"Processing data: {data}")
-        s = random.random() * data
+        s = random.random() * data * 2
         self.logger.warning(f"{TestProcessor.__name__} processing time: {s} seconds")
         # await asyncio.sleep(1)
         await asyncio.sleep(s)
+
+        if data == 2:
+            await asyncio.sleep(0.5)
+            raise Exception("Test exception")
+
 
         try:
             pass

@@ -57,7 +57,6 @@ class AsyncPipe(PipeInterface):
         message_id, data = data
         return (message_id, data)
 
-    
     async def __aiter__(self) -> AsyncGenerator[Any, None]:
         while True:
             data = await self.get()

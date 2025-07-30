@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from enum import Enum
 from collections import deque
 from logging import Logger
@@ -98,24 +99,29 @@ class AsyncProcessor(ProcessorInterface):
         """
 
         async with self.semaphore:
-            async for message_id, data in self.input_pipe:
-                task = asyncio.create_task(self.process(data, message_id = message_id))
-                self.tasks.append(task) 
+            try: 
+                async for message_id, data in self.input_pipe:
+                    task = asyncio.create_task(self.process(data, message_id = message_id))
+                    self.tasks.append(task) 
 
 
-            if self.output_strategy == OutputStrategy.ASAP:
-                for task in asyncio.as_completed(self.tasks):
-                    result = await task
-                    await self.output_pipe.put(result)
+                if self.output_strategy == OutputStrategy.ASAP:
+                    for task in asyncio.as_completed(self.tasks):
+                        result = await task
+                        await self.output_pipe.put(result)
 
-            elif self.output_strategy == OutputStrategy.ORDERED:
-                for task in self.tasks:
-                    result = await task
-                    await self.output_pipe.put(result)
+                elif self.output_strategy == OutputStrategy.ORDERED:
+                    for task in self.tasks:
+                        result = await task
+                        await self.output_pipe.put(result)
 
-
-            # tell the output pipe that we are done
-            await self.output_pipe.close()
+            except Exception as e:
+                self.logger.error(f"Error in processor {self.processor_id}: {e}")
+                self.logger.error(traceback.format_exc())
+                raise e
+            finally:
+                # tell the output pipe that we are done
+                await self.output_pipe.close()
 
             return await asyncio.gather(*self.tasks)
 

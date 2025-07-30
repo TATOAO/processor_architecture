@@ -1,8 +1,10 @@
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List
-from logging import Logger
 from enum import Enum
+from collections import deque
+from logging import Logger
+from typing import Any, AsyncGenerator, Dict, List
 from .core_interfaces import ProcessorInterface, PipeInterface
+from .pipe import BufferPipe
 from pydantic import BaseModel, computed_field
 
 
@@ -64,7 +66,6 @@ class AsyncProcessor(ProcessorInterface):
         # output strategy type
         self.output_strategy = OutputStrategy.from_string(output_strategy)
 
-    
         # tasks
         self.tasks = []
 
@@ -80,8 +81,9 @@ class AsyncProcessor(ProcessorInterface):
         Process data without blocking.
         """
 
+
         main_processing_task = asyncio.create_task(self.execute())
-        async for data in self.output_pipe:
+        async for message_id, data in self.output_pipe:
             yield data
 
         await main_processing_task
@@ -96,8 +98,8 @@ class AsyncProcessor(ProcessorInterface):
         """
 
         async with self.semaphore:
-            async for data in self.input_pipe:
-                task = asyncio.create_task(self.process(data))
+            async for message_id, data in self.input_pipe:
+                task = asyncio.create_task(self.process(data, message_id = message_id))
                 self.tasks.append(task) 
 
 
@@ -123,10 +125,6 @@ class AsyncProcessor(ProcessorInterface):
     
     async def cleanup(self) -> None:
         pass
-    
-    async def process(self, input_data: Any) -> Any:
-        pass
-
 
     def register_input_pipe(self, pipe: PipeInterface) -> None:
         self.input_pipe = pipe
@@ -136,3 +134,51 @@ class AsyncProcessor(ProcessorInterface):
     
     def statistics(self) -> Dict[str, Any]:
         return self.statistics.model_dump()
+    
+
+
+class AsyncProcessorWithBuffer(AsyncProcessor):
+    """
+    Processor implementation with buffer.
+    """
+    def __init__(self, processor_id: str, 
+            input_pipe: BufferPipe, 
+            output_pipe: PipeInterface, 
+            output_strategy: str = "asap",
+            logger: Logger = Logger("AsyncProcessor"), 
+            max_concurrent: int = 10,
+            buffer_size: int = 10):
+
+        super().__init__(processor_id, input_pipe, output_pipe, output_strategy, logger, max_concurrent)
+
+
+    async def execute(self) -> List[Any]:
+        """
+        Execute the processor. A non blocking method that will run processor.process() whenever input pipe
+        has data.
+
+        push data to output pipe as soon as it is processed
+
+        """
+
+        async with self.semaphore:
+            async for message_id, data in self.input_pipe:
+                task = asyncio.create_task(self.process(data, message_id = message_id))
+                self.tasks.append(task) 
+
+
+            if self.output_strategy == OutputStrategy.ASAP:
+                for task in asyncio.as_completed(self.tasks):
+                    result = await task
+                    await self.output_pipe.put(result)
+
+            elif self.output_strategy == OutputStrategy.ORDERED:
+                for task in self.tasks:
+                    result = await task
+                    await self.output_pipe.put(result)
+
+
+            # tell the output pipe that we are done
+            await self.output_pipe.close()
+
+            return await asyncio.gather(*self.tasks)

@@ -1,8 +1,8 @@
 import asyncio
 from pydantic import computed_field
-from typing import Any, List
+from typing import Any, List, Tuple
 from .processor import AsyncProcessor
-from .pipe import AsyncPipe
+from .pipe import AsyncPipe, BufferPipe
 import random
 
 
@@ -11,13 +11,20 @@ class TestProcessor(AsyncProcessor):
     Test processor.
     """
 
-    async def process(self, data: Any) -> Any:
+    async def process(self, data: Any, *args, **kwargs) -> Any:
         # await asyncio.sleep(random.randint(1, 10))
 
+        print(f"Processing data: {data}")
         s = random.random() * data
         self.logger.warning(f"{TestProcessor.__name__} processing time: {s} seconds")
         # await asyncio.sleep(1)
         await asyncio.sleep(s)
+
+        try:
+            pass
+            # print(await self.input_pipe.peek(5))
+        except Exception as e:
+            print(e)
 
         return data * 2
 
@@ -29,7 +36,8 @@ if __name__ == "__main__":
 
     import time
     async def main():
-        processor = TestProcessor("processor_id_test1", input_pipe, output_pipe, output_strategy="ordered")
+        processor = TestProcessor("processor_id_test1", input_pipe, output_pipe, output_strategy="ordered", max_concurrent=10)
+        # max_concurent is not going to work since all task are io bounded
         await input_pipe.put(1)
         await input_pipe.put(2)
         await input_pipe.put(3)

@@ -102,23 +102,21 @@ class BufferPipe(AsyncPipe):
     async def put(self, data: Any) -> None:
         self.statistics.historic_put_count += 1
 
+        if data is None:
+            await self.queue.put(None)
+            return
+
         message_id = self.generate_random_message_id(data)
 
         self.messages_ids.append(message_id)
-        self.buffer_map[message_id] = self.messages_ids[-self.buffer_size:]
+        self.buffer_map[message_id] = self.messages_ids[-self.buffer_size-1:-1]
         self.buffer[message_id] = data
 
-        await super().put((message_id, data))
+        await self.queue.put((message_id, data))
     
-    async def get(self, timeout: Optional[float] = None) -> Tuple[str, Any]:
-        message_id, data = await super().get(timeout)
-
-        # the buffer cannot be cleaned up here because the buffer is used by the peek method
-        return (message_id, data)
     
     async def peek(self, message_id: str, n: int = 1) -> List[Tuple[str, Any]]:
 
-        
         number_to_peek = min(self.buffer_size, n)
 
         # get the last n messages ids

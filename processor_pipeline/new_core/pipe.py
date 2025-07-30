@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from logging import Logger
+import logging
 from .core_interfaces import PipeInterface, PipeMeta
 from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple
 from pydantic import BaseModel
@@ -26,9 +26,13 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
     Attributes:
         queue (asyncio.Queue): The underlying queue for storing data.
     """
-    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: Logger = Logger("AsyncPipe")):
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe")):
         ### core attributes
-        self._pipe_id = pipe_id
+        if pipe_id is None:
+            self._pipe_id = f"pipe_{str(uuid.uuid4())}"
+        else:
+            self._pipe_id = pipe_id
+
         self.queue = asyncio.Queue(maxsize)
         self.logger = logger
 
@@ -42,19 +46,23 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
         return f"{hash(data)}_{uuid.uuid4()}"
 
     async def put(self, data: Any) -> None:
+
         self.statistics.historic_put_count += 1
         if data is None:
             await self.queue.put(None)
             return
         message_id = self.generate_random_message_id(data)
+        self.logger.debug(f"[{self._pipe_id}] [PUT] data: {data} with message_id: {message_id}")
         await self.queue.put((message_id, data))
 
     async def get(self, timeout: Optional[float] = None) -> Any:
+
         self.statistics.historic_get_count += 1
         data = await self.queue.get()
         if data is None:
             return None
         message_id, data = data
+        self.logger.debug(f"[{self._pipe_id}] [GET] data: {data} with message_id: {message_id}")
         return (message_id, data)
 
     async def __aiter__(self) -> AsyncGenerator[Any, None]:
@@ -86,7 +94,7 @@ class BufferPipe(AsyncPipe):
     """
     Buffer pipe implementation using asyncio.Queue.
     """
-    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: Logger = Logger("AsyncPipe"), buffer_size: int = 100):
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe"), buffer_size: int = 100):
         super().__init__(maxsize, pipe_id, logger)
         self.buffer_size = buffer_size
         self.buffer_map = {}

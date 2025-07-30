@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 import traceback
+import inspect
 from enum import Enum
 from collections import deque
 from logging import Logger
@@ -120,19 +121,49 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         async with self.semaphore:
             try: 
                 async for message_id, data in self.input_pipe:
-                    task = asyncio.create_task(self.process(data, message_id = message_id))
-                    self.tasks.append(task) 
+                    # Call the process method
+                    process_result = self.process(data, message_id=message_id)
+                    
+                    # Check if the result is an async generator
+                    if inspect.isasyncgen(process_result):
+                        # Create a real task to consume the async generator
+                        async def consume_async_generator(agen):
+                            results = []
+                            async for result in agen:
+                                results.append(result)
+                                if self.output_strategy == OutputStrategy.ASAP:
+                                    await self.output_pipe.put(result)
+                            return ('async_generator_results', results)
+                        
+                        task = asyncio.create_task(consume_async_generator(process_result))
+                        self.tasks.append(task)
+                    else:
+                        # It's a regular coroutine, create a task as before
+                        task = asyncio.create_task(process_result)
+                        self.tasks.append(task) 
+
 
 
                 if self.output_strategy == OutputStrategy.ASAP:
                     for task in asyncio.as_completed(self.tasks):
                         result = await task
-                        await self.output_pipe.put(result)
+                        # For regular coroutines, put result to output pipe
+                        # For async generators, results are already in the pipe
+                        if not (isinstance(result, tuple) and result[0] == 'async_generator_results'):
+                            await self.output_pipe.put(result)
 
                 elif self.output_strategy == OutputStrategy.ORDERED:
                     for task in self.tasks:
                         result = await task
-                        await self.output_pipe.put(result)
+                        # For ordered strategy with async generators, we need different handling
+                        if isinstance(result, tuple) and result[0] == 'async_generator_results':
+                            # This was an async generator, output results in order
+                            _, results = result
+                            for item in results:
+                                await self.output_pipe.put(item)
+                        else:
+                            # Regular coroutine result
+                            await self.output_pipe.put(result)
 
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")
@@ -142,7 +173,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 # tell the output pipe that we are done
                 await self.output_pipe.close()
 
-            return await asyncio.gather(*self.tasks)
+            return await asyncio.gather(*self.tasks) if self.tasks else []
 
     
     async def initialize(self) -> None:

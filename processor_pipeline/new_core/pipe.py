@@ -2,7 +2,7 @@ import asyncio
 import uuid
 import logging
 from .core_interfaces import PipeInterface, PipeMeta
-from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple
+from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple, Set
 from pydantic import BaseModel
 from collections import deque
 
@@ -26,6 +26,9 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
     Attributes:
         queue (asyncio.Queue): The underlying queue for storing data.
     """
+    meta = {
+        "name": "AsyncPipe"
+    }
     def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe")):
         ### core attributes
         if pipe_id is None:
@@ -35,6 +38,10 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
 
         self.queue = asyncio.Queue(maxsize)
         self.logger = logger
+        
+        # Observer/peek mechanism
+        self._observers: Dict[str, asyncio.Queue] = {}
+        self._observer_lock = asyncio.Lock()
 
         #### metadata
         self.metadata = {}
@@ -46,14 +53,25 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
         return f"{hash(data)}_{uuid.uuid4()}"
 
     async def put(self, data: Any) -> None:
-
         self.statistics.historic_put_count += 1
         if data is None:
             await self.queue.put(None)
+            # Also notify all observers of the None (end of stream)
+            async with self._observer_lock:
+                for observer_queue in self._observers.values():
+                    await observer_queue.put(None)
             return
+            
         message_id = self.generate_random_message_id(data)
         self.logger.debug(f"[{self._pipe_id}] [PUT] data: {data} with message_id: {message_id}")
+        
+        # Put data in main queue
         await self.queue.put((message_id, data))
+        
+        # Broadcast to all observers
+        async with self._observer_lock:
+            for observer_queue in self._observers.values():
+                await observer_queue.put((message_id, data))
 
     async def get(self, timeout: Optional[float] = None) -> Any:
 
@@ -80,6 +98,52 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
     
     async def close(self) -> None:
         self.queue.put_nowait(None)
+        # Also close all observer queues
+        async with self._observer_lock:
+            for observer_queue in self._observers.values():
+                observer_queue.put_nowait(None)
+
+    async def register_observer(self, observer_id: Optional[str] = None) -> str:
+        """Register a new observer and return its ID for peeking"""
+        if observer_id is None:
+            observer_id = f"observer_{str(uuid.uuid4())}"
+        
+        async with self._observer_lock:
+            if observer_id in self._observers:
+                raise ValueError(f"Observer {observer_id} already exists")
+            self._observers[observer_id] = asyncio.Queue()
+        
+        self.logger.debug(f"[{self._pipe_id}] Registered observer: {observer_id}")
+        return observer_id
+
+    async def unregister_observer(self, observer_id: str) -> None:
+        """Unregister an observer"""
+        async with self._observer_lock:
+            if observer_id in self._observers:
+                # Close the observer queue
+                self._observers[observer_id].put_nowait(None)
+                del self._observers[observer_id]
+                self.logger.debug(f"[{self._pipe_id}] Unregistered observer: {observer_id}")
+
+    async def peek_aiter(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
+        """Create an async iterator for peeking without consuming from main queue"""
+        if observer_id is None:
+            observer_id = await self.register_observer()
+        
+        if observer_id not in self._observers:
+            raise ValueError(f"Observer {observer_id} not found")
+        
+        observer_queue = self._observers[observer_id]
+        
+        try:
+            while True:
+                data = await observer_queue.get()
+                if data is None:
+                    break
+                yield data
+        finally:
+            # Clean up observer when done
+            await self.unregister_observer(observer_id)
 
     async def statistics(self) -> Dict[str, Any]:
         """
@@ -94,6 +158,9 @@ class BufferPipe(AsyncPipe):
     """
     Buffer pipe implementation using asyncio.Queue.
     """
+    meta = {
+        "name": "BufferPipe"
+    }
     def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe"), buffer_size: int = 100):
         super().__init__(maxsize, pipe_id, logger)
         self.buffer_size = buffer_size
@@ -112,6 +179,10 @@ class BufferPipe(AsyncPipe):
 
         if data is None:
             await self.queue.put(None)
+            # Also notify all observers of the None (end of stream)
+            async with self._observer_lock:
+                for observer_queue in self._observers.values():
+                    await observer_queue.put(None)
             return
 
         message_id = self.generate_random_message_id(data)
@@ -120,7 +191,13 @@ class BufferPipe(AsyncPipe):
         self.buffer_map[message_id] = self.messages_ids[-self.buffer_size-1:-1]
         self.buffer[message_id] = data
 
+        # Put data in main queue
         await self.queue.put((message_id, data))
+        
+        # Broadcast to all observers
+        async with self._observer_lock:
+            for observer_queue in self._observers.values():
+                await observer_queue.put((message_id, data))
     
     
     async def peek(self, message_id: str, n: int = 1) -> List[Tuple[str, Any]]:

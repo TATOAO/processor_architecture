@@ -1,8 +1,10 @@
-from typing import AsyncGenerator
-from .processor import AsyncProcessor
 import asyncio
 import hashlib
 import random
+from typing import AsyncGenerator
+from processor_pipeline.new_core.processor import AsyncProcessor
+from processor_pipeline.new_core.graph import GraphBase
+from processor_pipeline.new_core.graph_model import Node, Edge
 
 class ChunkerProcessor(AsyncProcessor):
     meta = {
@@ -43,9 +45,6 @@ class HasherProcessor(AsyncProcessor):
 # python -m processor_pipeline.new_core.test_graph
 if __name__ == "__main__":
     from .pipe import AsyncPipe
-    input_pipe = AsyncPipe(pipe_id="input_pipe_test1")
-    output_pipe = AsyncPipe(pipe_id="output_pipe_test1")
-    hasher_pipe = AsyncPipe(pipe_id="hasher_pipe_test1")
 
     import time
     import logging
@@ -53,22 +52,31 @@ if __name__ == "__main__":
 
     async def main():
         start_time = time.time()
-        await input_pipe.put("X" * 10)
-        await input_pipe.put("O" * 10)
-        await input_pipe.put(None)  # Signal end of input
 
-        chunker_processor = ChunkerProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
-        hasher_processor = HasherProcessor(input_pipe=output_pipe, output_pipe=hasher_pipe)
-        
-        # Start both processors concurrently
-        chunker_task = asyncio.create_task(chunker_processor.execute())
-        
-        # Stream results from the hasher processor
-        async for data in hasher_processor.astream():
-            print('final data', data)
-        
-        # Wait for chunker to complete
-        await chunker_task
+        graph = GraphBase(nodes=[
+            Node(processor_class_name="ChunkerProcessor", processor_unique_name="chunker_processor_1"),
+            Node(processor_class_name="HasherProcessor", processor_unique_name="hasher_processor_1"),
+        ], edges=[
+            Edge(source_node_unique_name="chunker_processor_1", 
+                target_node_unique_name="hasher_processor_1", 
+                edge_unique_name="edge_1"),
+        ])
+
+        def init_generator_1():
+            return [
+                "X" * 10,
+                "O" * 10,
+            ]
+
+        def init_generator_2():
+            for i in range(10):
+                yield "X" * 10
+                yield "O" * 10
+                yield "X" * 10
+
+
+        async for data in graph.astream(init_generator_1):
+            print('result', data)
 
         end_time = time.time()
         print(f"Time taken: {end_time - start_time} seconds")

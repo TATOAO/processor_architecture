@@ -1,30 +1,22 @@
 import networkx as nx
-from .graph import Graph, Node, Edge
+from .graph_model import Node, Edge
 from .core_interfaces import ProcessorInterface, ProcessorMeta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Generator, Tuple
 
-def build_nx_graph(graph: Graph) -> nx.DiGraph:
+def build_nx_graph(nodes: List[Node], edges: List[Edge]) -> nx.DiGraph:
     """Build a networkx graph from the graph definition"""
     G = nx.DiGraph()
     
     # Add nodes using their unique name
-    for node in graph.nodes:
+    for node in nodes:
         G.add_node(node.processor_unique_name, data=node)
 
     # Add edges using their unique name
-    for edge in graph.edges:
+    for edge in edges:
         G.add_edge(edge.source_node_unique_name, edge.target_node_unique_name, key=edge.edge_unique_name, data=edge)
 
     return G
 
-def initialize_processors(graph: Graph) -> Dict[str, ProcessorInterface]:
-    """Initialize all processors in the graph"""
-    processors = {}
-    for node in graph.nodes:
-        processor_class = ProcessorMeta.registry[node.processor_class_name]
-        # Create processor instance and store it
-        processors[node.processor_unique_name] = processor_class()
-    return processors
 
 def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
     """Get all nodes that come before the given node in the graph"""
@@ -96,7 +88,7 @@ def get_nodes_at_depth(nx_graph: nx.DiGraph, depth: int) -> List[str]:
             nodes_at_depth.append(node)
     return nodes_at_depth
 
-def get_subgraph_from_node(nx_graph: nx.DiGraph, node_unique_name: str) -> Graph:
+def get_subgraph_from_node(nx_graph: nx.DiGraph, node_unique_name: str) -> Tuple[List[Node], List[Edge]]:
     """Get a subgraph starting from the given node (including all reachable nodes)"""
     if node_unique_name not in nx_graph:
         raise ValueError(f"Node {node_unique_name} not found in graph")
@@ -120,22 +112,7 @@ def get_subgraph_from_node(nx_graph: nx.DiGraph, node_unique_name: str) -> Graph
         edge_data = nx_graph.edges[source, target, key]['data']
         sub_edges.append(edge_data)
     
-    return Graph(nodes=sub_nodes, edges=sub_edges)
-
-def add_node_to_graph(graph: Graph, nx_graph: nx.DiGraph, node: Node):
-    """Add a node to both the graph and networkx graph"""
-    graph.nodes.append(node)
-    nx_graph.add_node(node.processor_unique_name, data=node)
-
-def add_edge_to_graph(graph: Graph, nx_graph: nx.DiGraph, edge: Edge):
-    """Add an edge to both the graph and networkx graph"""
-    graph.edges.append(edge)
-    nx_graph.add_edge(
-        edge.source_node_unique_name,
-        edge.target_node_unique_name,
-        key=edge.edge_unique_name,
-        data=edge
-    )
+    return sub_nodes, sub_edges
 
 def get_execution_levels(nx_graph: nx.DiGraph) -> Dict[int, List[str]]:
     """Get all nodes organized by their execution level (depth)"""
@@ -174,6 +151,26 @@ def validate_graph_connectivity(nx_graph: nx.DiGraph) -> bool:
     
     return reachable_nodes == all_nodes
 
+
+def traverse_graph_generator_dfs(nx_graph: nx.DiGraph, node_name: str) -> Generator[str, None, None]:
+    """Traverse the graph from the given node name using depth-first search"""
+    visited = set()
+    stack = [node_name]
+    
+    while stack:
+        current_node = stack.pop()
+        if current_node not in visited:
+            visited.add(current_node)
+            yield current_node
+            
+            # Get next nodes and add them to stack in reverse order
+            # (to maintain DFS left-to-right traversal)
+            next_nodes = get_next_nodes(nx_graph, current_node)
+            for next_node in reversed(next_nodes):
+                if next_node not in visited:
+                    stack.append(next_node)
+
+
 def get_graph_statistics(nx_graph: nx.DiGraph) -> Dict[str, Any]:
     """Get comprehensive statistics about the graph"""
     return {
@@ -187,3 +184,25 @@ def get_graph_statistics(nx_graph: nx.DiGraph) -> Dict[str, Any]:
         'execution_levels': get_execution_levels(nx_graph),
         'parallel_opportunities': get_parallel_execution_opportunities(nx_graph)
     }
+
+
+# python -m processor_pipeline.new_core.graph_utils
+if __name__ == "__main__":
+    # test the traverse_graph_generator_dfs
+    from .test_graph import ChunkerProcessor, HasherProcessor
+    nx_graph = build_nx_graph(nodes=[
+        Node(processor_class_name="ChunkerProcessor", processor_unique_name="A"),
+        Node(processor_class_name="HasherProcessor", processor_unique_name="AA"),
+        Node(processor_class_name="ChunkerProcessor", processor_unique_name="AB"),
+        Node(processor_class_name="HasherProcessor", processor_unique_name="AAA"),
+        Node(processor_class_name="HasherProcessor", processor_unique_name="AAB"),
+    ], edges=[
+        Edge(source_node_unique_name="A", target_node_unique_name="AA", edge_unique_name="A--AA"),
+        Edge(source_node_unique_name="A", target_node_unique_name="AB", edge_unique_name="A--AB"),
+        Edge(source_node_unique_name="AA", target_node_unique_name="AAA", edge_unique_name="AA--AAA"),
+        Edge(source_node_unique_name="AA", target_node_unique_name="AAB", edge_unique_name="AA--AAB"),
+    ])
+
+
+    for node_name in traverse_graph_generator_dfs(nx_graph, "A"):
+        print(node_name)

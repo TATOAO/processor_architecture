@@ -106,6 +106,27 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         await main_processing_task
 
+    async def peek_astream(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
+        """
+        Process data without blocking and without consuming from the output pipe.
+        This allows multiple consumers to "peek" at the data without interfering 
+        with the main data flow.
+        
+        Args:
+            observer_id: Optional observer ID for tracking. If None, a new one is generated.
+            
+        Yields:
+            Any: Data from the processor's output pipe without consuming it
+        """
+        # Start the processing task
+        main_processing_task = asyncio.create_task(self.execute())
+        
+        # Get data through the peek mechanism
+        async for message_id, data in self.output_pipe.peek_aiter(observer_id):
+            yield data
+
+        await main_processing_task
+
     
     async def execute_output_asap(self) -> List[Any]:
         """

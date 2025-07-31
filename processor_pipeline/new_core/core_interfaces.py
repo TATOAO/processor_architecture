@@ -101,6 +101,21 @@ class PipeInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    async def register_observer(self, observer_id: Optional[str] = None) -> str:
+        """Register a new observer and return its ID for peeking"""
+        pass
+
+    @abstractmethod
+    async def unregister_observer(self, observer_id: str) -> None:
+        """Unregister an observer"""
+        pass
+
+    @abstractmethod
+    async def peek_aiter(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
+        """Create an async iterator for peeking without consuming from main queue"""
+        pass
+
 
 class ProcessorInterface(ABC):
     """Interface for processors in the graph"""
@@ -124,6 +139,11 @@ class ProcessorInterface(ABC):
     @abstractmethod
     async def astream(self, input_data: Any) -> AsyncGenerator[Any, None]:
         """Process data without blocking"""
+        pass
+
+    @abstractmethod
+    async def peek_astream(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
+        """Process data without blocking and without consuming from the output pipe"""
         pass
 
     @abstractmethod

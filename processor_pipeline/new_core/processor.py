@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 import traceback
+import inspect
 from enum import Enum
 from collections import deque
 from logging import Logger
@@ -105,6 +106,73 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         await main_processing_task
 
+    
+    async def execute_output_asap(self) -> List[Any]:
+        """
+        Execute processor that outputs as soon as it is processed.
+        Handles both async generators and regular async functions.
+        """
+        tasks = []
+        
+        async def process_task(data: Any, message_id: str) -> Any:
+            process_result = self.process(data, message_id=message_id)
+            
+            # Check if the process method returns an async generator
+            if inspect.isasyncgen(process_result):
+                results = []
+                # Handle async generator case
+                async for item in process_result:
+                    await self.output_pipe.put(item)
+                    results.append(item)
+                return results
+            else:
+                # Handle regular async function case
+                result = await process_result
+                await self.output_pipe.put(result)
+                return result
+
+        async with self.semaphore:
+            try:
+                async for message_id, data in self.input_pipe:
+                    task = asyncio.create_task(process_task(data, message_id=message_id))
+                    tasks.append(task)
+
+                result = await asyncio.gather(*tasks)
+            except Exception as e:
+                self.logger.error(f"Error in processor {self.processor_id}: {e}")
+                self.logger.error(traceback.format_exc())
+                raise e
+            finally:
+                await self.output_pipe.close()
+                return result
+
+    async def execute_output_ordered(self) -> Any:
+        """
+        Execute processor that outputs in order.
+        """
+        tasks = []
+        results = []
+
+        async with self.semaphore:
+            try:
+                async for message_id, data in self.input_pipe:
+                    task = asyncio.create_task(self.process(data, message_id=message_id))
+                    tasks.append(task)
+
+                for task in tasks:
+                    result = await task
+                    await self.output_pipe.put(result)
+                    results.append(result)
+
+            except Exception as e:
+                self.logger.error(f"Error in processor {self.processor_id}: {e}")
+                self.logger.error(traceback.format_exc())
+                raise e
+            finally:
+                await self.output_pipe.close()
+                return results       # return result
+
+
     async def execute(self) -> List[Any]:
         """
         Execute the processor. A non blocking method that will run processor.process() whenever input pipe
@@ -114,32 +182,13 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         """
 
-        async with self.semaphore:
-            try: 
-                tasks = []
-                async for message_id, data in self.input_pipe:
-                    task = asyncio.create_task(self.process(data, message_id = message_id))
-                    tasks.append(task) 
+        if self.output_strategy == OutputStrategy.ASAP:
+            return await self.execute_output_asap()
+        elif self.output_strategy == OutputStrategy.ORDERED:
+            return await self.execute_output_ordered()
+        else:
+            raise ValueError(f"Invalid output strategy: {self.output_strategy}")
 
-                if self.output_strategy == OutputStrategy.ASAP:
-                    for task in asyncio.as_completed(tasks):
-                        result = await task
-                        await self.output_pipe.put(result)
-
-                elif self.output_strategy == OutputStrategy.ORDERED:
-                    for task in tasks:
-                        result = await task
-                        await self.output_pipe.put(result)
-
-            except Exception as e:
-                self.logger.error(f"Error in processor {self.processor_id}: {e}")
-                self.logger.error(traceback.format_exc())
-                raise e
-            finally:
-                # tell the output pipe that we are done
-                await self.output_pipe.close()
-
-            return await asyncio.gather(*tasks)
 
     
     async def initialize(self) -> None:

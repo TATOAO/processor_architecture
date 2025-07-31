@@ -43,11 +43,22 @@ if __name__ == "__main__":
         await input_pipe.put(None)
 
         chunker_processor = ChunkerProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
+
+        async for data in chunker_processor.process("X" * 10):
+            print(data)
+
+        for data in chunker_processor.process("X" * 10):
+            print(data)
+
+
+
         # async for data in chunker_processor.astream():
         #     print(data)
 
-        result = await chunker_processor.execute()
-        print(result)
+        # result = await chunker_processor.execute()
+        # print(result)
+
+
 
 
 

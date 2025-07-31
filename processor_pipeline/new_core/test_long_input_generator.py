@@ -94,6 +94,7 @@ async def fixed_input_stream(input_pipe: AsyncPipe):
         input_data = f"{i}" * 10
         print(f"Putting data into input pipe: {input_data}")
         await input_pipe.put(input_data)
+    await input_pipe.put(None)
     await input_pipe.close()
 
 
@@ -125,7 +126,28 @@ async def main():
     end_time = time.time()
     print(f"Time taken to put data into input pipe: {end_time - start_time} seconds")
 
+async def main_test_astream():
+    start_time = time.time()
+    input_pipe = AsyncPipe(pipe_id="input_pipe_test_long_input")
+    output_pipe = AsyncPipe(pipe_id="output_pipe_test_long_input")
+
+    processor = TestProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
+
+    async def main_stream():
+        async for item in processor.astream():
+            print('xxxxxxx', item)
+    
+    terminal_task = asyncio.create_task(fixed_input_stream(input_pipe))
+    main_stream_task = asyncio.create_task(main_stream())
+
+    await asyncio.gather(main_stream_task, terminal_task)
+    end_time = time.time()
+    print(f"Time taken to put data into input pipe: {end_time - start_time} seconds")
+        
+
+
 # python -m processor_pipeline.new_core.test_long_input_generator
 if __name__ == "__main__":
     print("Enter numbers or text (press Ctrl+D or Ctrl+C to exit):")
-    asyncio.run(main())
+    # asyncio.run(main())
+    asyncio.run(main_test_astream())

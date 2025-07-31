@@ -3,7 +3,7 @@ import asyncio
 import traceback
 import inspect
 from enum import Enum
-from collections import deque
+from collections import deque, defaultdict
 from logging import Logger
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from .core_interfaces import ProcessorInterface, PipeInterface, ProcessorMeta
@@ -173,6 +173,58 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 return results       # return result
 
 
+    async def execute_output_ordered_async_generator(self) -> Any:
+        """
+        Execute processor that outputs in order.
+        """
+        task_ids = []
+        results = []
+        task_queue_dict = defaultdict(asyncio.Queue)
+
+
+        async def process_task(data: Any, message_id: str) -> Any:
+            """
+            may be having trouble if message is not unique?
+            """
+            process_result = self.process(data, message_id=message_id)
+            # if inspect.isasyncgen(process_result):
+            async for item in process_result:
+                await task_queue_dict[message_id].put(item)
+            
+            task_queue_dict[message_id].put_nowait(None)
+        
+        async def output_from_task_queue_with_order():
+            result_list_of_list= []
+            for message_id in task_ids:
+                result = []
+                while True:
+                    item = await task_queue_dict[message_id].get()
+                    if item is None:
+                        break
+                    result.append(item)
+                    await self.output_pipe.put(item)
+                
+                result_list_of_list.append(result)
+            return result_list_of_list
+
+        async with self.semaphore:
+            try:
+                async for message_id, data in self.input_pipe:
+                    task_ids.append(message_id)
+                    task = asyncio.create_task(process_task(data, message_id=message_id))
+                results = await output_from_task_queue_with_order()
+
+            except Exception as e:
+                self.logger.error(f"Error in processor {self.processor_id}: {e}")
+                self.logger.error(traceback.format_exc())
+                raise e
+            finally:
+                await self.output_pipe.close()
+                return results
+
+
+
+
     async def execute(self) -> List[Any]:
         """
         Execute the processor. A non blocking method that will run processor.process() whenever input pipe
@@ -181,11 +233,14 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         push data to output pipe as soon as it is processed
 
         """
-
         if self.output_strategy == OutputStrategy.ASAP:
             return await self.execute_output_asap()
         elif self.output_strategy == OutputStrategy.ORDERED:
-            return await self.execute_output_ordered()
+            if inspect.isasyncgenfunction(self.process):
+                return await self.execute_output_ordered_async_generator()
+            else:
+                return await self.execute_output_ordered()
+
         else:
             raise ValueError(f"Invalid output strategy: {self.output_strategy}")
 

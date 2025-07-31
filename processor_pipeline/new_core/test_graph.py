@@ -9,7 +9,7 @@ class ChunkerProcessor(AsyncProcessor):
         "name": "ChunkerProcessor",
         "input_pipe_type": "AsyncPipe",
         "output_pipe_type": "AsyncPipe",
-        "output_strategy": "asap",
+        "output_strategy": "ordered",
     }
 
     async def process(self, input_data:str, *args, **kwargs) -> AsyncGenerator[str, None]:

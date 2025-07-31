@@ -33,6 +33,8 @@ if __name__ == "__main__":
     output_pipe = AsyncPipe(pipe_id="output_pipe_test1")
 
     import time
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
 
     async def main():
         start_time = time.time()
@@ -41,8 +43,13 @@ if __name__ == "__main__":
         await input_pipe.put(None)
 
         chunker_processor = ChunkerProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
-        async for data in chunker_processor.astream():
-            print(data)
+        # async for data in chunker_processor.astream():
+        #     print(data)
+
+        result = await chunker_processor.execute()
+        print(result)
+
+
 
         end_time = time.time()
         print(f"Time taken: {end_time - start_time} seconds")

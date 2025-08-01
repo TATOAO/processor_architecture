@@ -26,7 +26,7 @@ def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]
     predecessors = list(nx_graph.predecessors(node_unique_name))
     return predecessors
 
-def get_next_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
+def get_next_nodes_names(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
     """Get all nodes that come after the given node in the graph"""
     if node_unique_name not in nx_graph:
         raise ValueError(f"Node {node_unique_name} not found in graph")
@@ -165,10 +165,10 @@ def traverse_graph_generator_dfs(nx_graph: nx.DiGraph, node_name: str) -> Genera
             
             # Get next nodes and add them to stack in reverse order
             # (to maintain DFS left-to-right traversal)
-            next_nodes = get_next_nodes(nx_graph, current_node)
-            for next_node in reversed(next_nodes):
-                if next_node not in visited:
-                    stack.append(next_node)
+            next_nodes_names = get_next_nodes_names(nx_graph, current_node)
+            for next_node_name in reversed(next_nodes_names):
+                if next_node_name not in visited:
+                    stack.append(next_node_name)
 
 
 def get_graph_statistics(nx_graph: nx.DiGraph) -> Dict[str, Any]:

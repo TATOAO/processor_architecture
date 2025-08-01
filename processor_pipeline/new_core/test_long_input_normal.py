@@ -86,7 +86,9 @@ async def monitor_output(output_pipe: AsyncPipe):
     """
     Monitor the output pipe and print the data.
     """
-    async for message_id, data in output_pipe:
+    observer_id = await output_pipe.register_observer()
+
+    async for message_id, data in output_pipe.peek_aiter(observer_id):
         print('wall_time spent', time.time() - start_time)
         print(f"Output: {data}")
 
@@ -101,6 +103,11 @@ async def main():
     # terminal_task = asyncio.create_task(stream_terminal_input(input_pipe))
     terminal_task = await fixed_input_stream(input_pipe)
     monitor_task = asyncio.create_task(monitor_output(output_pipe))
+
+
+
+    
+
     processor_task = asyncio.create_task(processor.execute())
     
     # Wait for both tasks to complete

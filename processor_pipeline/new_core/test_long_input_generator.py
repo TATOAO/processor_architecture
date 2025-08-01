@@ -102,8 +102,9 @@ async def monitor_output(output_pipe: AsyncPipe):
     """
     Monitor the output pipe and print the data.
     """
-    async for message_id, data in output_pipe:
-        print(f"Output: {data}")
+    observer_id = await output_pipe.register_observer()
+    async for message_id, data in output_pipe.peek_aiter(observer_id):
+        print(f"monitor output: {data}")
 
 
 async def main():
@@ -139,6 +140,7 @@ async def main_test_astream():
     
     terminal_task = asyncio.create_task(fixed_input_stream(input_pipe))
     main_stream_task = asyncio.create_task(main_stream())
+    monitor_task = asyncio.create_task(monitor_output(output_pipe))
 
     await asyncio.gather(main_stream_task, terminal_task)
     end_time = time.time()

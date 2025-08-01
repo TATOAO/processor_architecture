@@ -1,5 +1,6 @@
 from .core_interfaces import ProcessorInterface, ProcessorMeta
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict, Field, computed_field
+from typing import Optional
 
 class Node(BaseModel):
     processor_class_name: str
@@ -20,9 +21,19 @@ class Node(BaseModel):
         return v
     
 
+    @computed_field
+    @property
+    def processor_class(self) -> ProcessorInterface:
+        return ProcessorMeta.registry[self.processor_class_name]
+    
+
 class Edge(BaseModel):
     source_node_unique_name: str
     target_node_unique_name: str
     edge_unique_name: str
+
+    source_node_pipe_id: Optional[str] = Field(default=None, alias="source_node_pipe_id")
+    target_node_pipe_id: Optional[str] = Field(default=None, alias="target_node_pipe_id")
+
 
 

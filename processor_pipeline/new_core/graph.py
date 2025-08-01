@@ -8,7 +8,7 @@ from .graph_utils import (
     build_nx_graph, 
     traverse_graph_generator_dfs,
     get_previous_nodes, 
-    get_next_nodes, 
+    get_next_nodes_names, 
     get_root_nodes, 
     get_leaf_nodes, 
     get_node_paths, 
@@ -25,8 +25,10 @@ from .graph_utils import (
 
 class GraphBase():
     def __init__(self, nodes: List[Node], edges: List[Edge]):
-        self.nodes = nodes
-        self.edges = edges
+        self.nodes: List[Node] = nodes
+        self.edges: List[Edge] = edges
+        self.nodes_map: Dict[str, Node] = {node.processor_unique_name: node for node in self.nodes}
+        self.edges_map: Dict[str, Edge] = {edge.edge_unique_name: edge for edge in self.edges}
         self.nx_graph = build_nx_graph(self.nodes, self.edges)
 
         self.pipes = {}
@@ -52,8 +54,7 @@ class GraphBase():
         1. create pipes
         2. instance all processors
         3. connecting pipes
-            a. if is N to 1, create a connter that yield all N pipes (asyncio.as_completed) into the 1 pipe
-            b. if is 1 to N / 1 to 1, simpliy using the same output pipe as the input pipes for the succeeding nodes
+            
         4. start all the async task for all processors execute function
         """
         from .pipe import AsyncPipe
@@ -68,11 +69,60 @@ class GraphBase():
         self.root_node = self.root_nodes[0]
 
 
+        for edge in self.edges:
+            edge.source_node_pipe_id = f"output_pipe_{edge.source_node_unique_name}"
+            edge.target_node_pipe_id = f"input_pipe_{edge.target_node_unique_name}"
+        
+
+        for node in self.nodes:
+            if node.processor_unique_name == self.root_node:
+                continue
+
+            # previosu_node has output deegree 1, this node has input deegree 1, so we can share the pipe
+            if len(previous_nodes) == 1:
+                previous_node = previous_nodes[0]
+
+                shared_pipe_type = node.processor_class.meta["input_pipe_type"]
+                pipe_class = PipeMeta.registry[shared_pipe_type]
+
+                shared_pipe = pipe_class()
+                shared_pipe.pipe_id = f"shared_pipe_{node.processor_unique_name}"
+                self.pipes[shared_pipe.pipe_id] = shared_pipe
+
+
+
+
+            elif len(get_previous_nodes(self.nx_graph, node.processor_unique_name)) > 1:
+                edge = self.edges_map[f"edge_{node.processor_unique_name}"]
+                edge.source_node_pipe_id = f"output_pipe_{edge.source_node_unique_name}"
+                edge.target_node_pipe_id = f"input_pipe_{edge.target_node_unique_name}"
+
+
+
+
+
+
         # Step 3: Connect pipes to processors
         for node_name in traverse_graph_generator_dfs(self.nx_graph, self.root_node):
+            node = self.nodes_map[node_name]
+            processor_class_name = node.processor_class_name
+            processor_class = ProcessorMeta.registry[processor_class_name]
+            input_pipepipe_type = processor_class.meta["input_pipe_type"]
+            output_pipe_type = processor_class.meta["output_pipe_type"]
+
+
+            if input_pipe_type == "AsyncPipe":
+                input_pipe = AsyncPipe(pipe_id=f"input_pipe_{node_name}")
+            elif input_pipe_type == "GeneratorPipe":
+
+            processor = processor_class()
+
+            # ProcessorMeta.registry[processor_class_name]
+            # processor = processor_class()
 
             
-            
+
+
             # Get incoming and outgoing edges for this node
             incoming_edges = [edge for edge in self.edges if edge.target_node_unique_name == node_name]
             outgoing_edges = [edge for edge in self.edges if edge.source_node_unique_name == node_name]

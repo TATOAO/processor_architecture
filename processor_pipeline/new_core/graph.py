@@ -1,6 +1,8 @@
 import networkx as nx
 import asyncio
 from typing import List, Dict, Any, Optional, Set, AsyncGenerator, Generator
+from .processor import AsyncProcessor
+from .pipe import AsyncPipe
 from .graph_model import Node, Edge
 from .core_interfaces import PipeInterface, PipeMeta, ProcessorMeta, ProcessorInterface
 from pydantic import BaseModel, field_validator
@@ -23,149 +25,90 @@ from .graph_utils import (
 )
 
 
-class GraphBase():
-    def __init__(self, nodes: List[Node], edges: List[Edge]):
+class ProcessorDirectPipe(BaseModel):
+    input_pipe: PipeInterface
+    output_pipe: PipeInterface
+
+class GraphStatistics(BaseModel):
+    """Statistics about the graph"""
+    total_nodes: int = 0
+    total_edges: int = 0
+    total_processors: int = 0
+    total_pipes: int = 0
+
+class GraphBase(AsyncProcessor):
+    meta = {
+        "name": "GraphBase",
+        "input_pipe_type": "BufferPipe",
+        "output_pipe_type": "BufferPipe",
+    }
+
+    def __init__(self, nodes: List[Node], edges: List[Edge], **kwargs):
+        super().__init__(**kwargs)
+        self._statistics = GraphStatistics()
+
         self.nodes: List[Node] = nodes
         self.edges: List[Edge] = edges
         self.nodes_map: Dict[str, Node] = {node.processor_unique_name: node for node in self.nodes}
         self.edges_map: Dict[str, Edge] = {edge.edge_unique_name: edge for edge in self.edges}
         self.nx_graph = build_nx_graph(self.nodes, self.edges)
 
-        self.pipes = {}
-        self.processors_map = {}
-
-        ## 
-        self.leaf_nodes = get_leaf_nodes(self.nx_graph)
-
-        self.initialize()
+        self.processor_pipes: Dict[str, ProcessorDirectPipe] = {}
+        self.processors: Dict[str, ProcessorInterface] = {}
 
 
-    def initialize_processors(self) -> Dict[str, ProcessorInterface]:
-        """Initialize all processors in the graph"""
-        processors = {}
-        for node in self.nodes:
-            processor_class = ProcessorMeta.registry[node.processor_class_name]
-            # Create processor instance and store it
-            processors[node.processor_unique_name] = processor_class()
-        return processors
-
-    def initialize(self):
-        """Initialize all processors in the graph:
-        1. create pipes
-        2. instance all processors
-        3. connecting pipes
-            
-        4. start all the async task for all processors execute function
-        """
-        from .pipe import AsyncPipe
-        from .graph_utils import initialize_processors
-        
-        self.root_nodes = get_root_nodes(self.nx_graph)
-        self.leaf_nodes = get_leaf_nodes(self.nx_graph)
-        # only one root node is allowed
-        if len(self.root_nodes) != 1:
-            raise ValueError("Graph must have exactly one root node")
-        
-        self.root_node = self.root_nodes[0]
-
-
-        for edge in self.edges:
-            edge.source_node_pipe_id = f"output_pipe_{edge.source_node_unique_name}"
-            edge.target_node_pipe_id = f"input_pipe_{edge.target_node_unique_name}"
-        
+    async def initialize(self):
 
         for node in self.nodes:
-            if node.processor_unique_name == self.root_node:
-                continue
+            self.initialize_node(node)
 
-            # previosu_node has output deegree 1, this node has input deegree 1, so we can share the pipe
-            if len(previous_nodes) == 1:
-                previous_node = previous_nodes[0]
+        connecting_tasks = []
+        for node in self.nodes:
+            # merge input pipes
+            precious_nodes = get_previous_nodes(self.nx_graph, node.processor_unique_name)
+            previous_input_pipes = [self.processor_pipes[node.processor_unique_name].output_pipe for node in precious_nodes]
+            task = asyncio.create_task(self._fan_in_pipes(previous_input_pipes, self.processor_pipes[node.processor_unique_name].input_pipe))
+            connecting_tasks.append(task)
 
-                shared_pipe_type = node.processor_class.meta["input_pipe_type"]
-                pipe_class = PipeMeta.registry[shared_pipe_type]
+            # merge output pipes
+            next_nodes = get_next_nodes_names(self.nx_graph, node.processor_unique_name)
+            next_output_pipes = [self.processor_pipes[node.processor_unique_name].output_pipe for node in next_nodes]
+            task = asyncio.create_task(self._fan_out_pipes(self.processor_pipes[node.processor_unique_name].output_pipe, next_output_pipes))
+            connecting_tasks.append(task)
+        
+        root_node = get_root_nodes(self.nx_graph)[0]
+        self.register_input_pipe(self.processor_pipes[root_node.processor_unique_name].input_pipe)
 
-                shared_pipe = pipe_class()
-                shared_pipe.pipe_id = f"shared_pipe_{node.processor_unique_name}"
-                self.pipes[shared_pipe.pipe_id] = shared_pipe
+        this_output_pipe_type = self.meta["output_pipe_type"]
+        the_output_pipe = PipeMeta.registry[this_output_pipe_type](pipe_id=f"output_pipe_{self.processor_unique_name}")
+        self.register_output_pipe(the_output_pipe)
 
+        leaf_nodes = get_leaf_nodes(self.nx_graph)
+        leaf_output_pipes = [self.processor_pipes[node.processor_unique_name].output_pipe for node in leaf_nodes]
+        task = asyncio.create_task(self._fan_out_pipes(the_output_pipe, leaf_output_pipes))
+        connecting_tasks.append(task)
 
-
-
-            elif len(get_previous_nodes(self.nx_graph, node.processor_unique_name)) > 1:
-                edge = self.edges_map[f"edge_{node.processor_unique_name}"]
-                edge.source_node_pipe_id = f"output_pipe_{edge.source_node_unique_name}"
-                edge.target_node_pipe_id = f"input_pipe_{edge.target_node_unique_name}"
-
-
-
-
-
-
-        # Step 3: Connect pipes to processors
-        for node_name in traverse_graph_generator_dfs(self.nx_graph, self.root_node):
-            node = self.nodes_map[node_name]
-            processor_class_name = node.processor_class_name
-            processor_class = ProcessorMeta.registry[processor_class_name]
-            input_pipepipe_type = processor_class.meta["input_pipe_type"]
-            output_pipe_type = processor_class.meta["output_pipe_type"]
+        await asyncio.gather(*connecting_tasks)
 
 
-            if input_pipe_type == "AsyncPipe":
-                input_pipe = AsyncPipe(pipe_id=f"input_pipe_{node_name}")
-            elif input_pipe_type == "GeneratorPipe":
+    def initialize_node(self, node: Node):
+        input_pipe_type = node.processor_class.meta["input_pipe_type"]
+        input_pipe_class = PipeMeta.registry[input_pipe_type]
+        output_pipe_type = node.processor_class.meta["output_pipe_type"]
+        output_pipe_class = PipeMeta.registry[output_pipe_type]
+        self.processor_pipes[node.processor_unique_name] = ProcessorDirectPipe(
+            input_pipe=input_pipe_class(pipe_id=f"input_pipe_{node.processor_unique_name}"),
+            output_pipe=output_pipe_class(pipe_id=f"output_pipe_{node.processor_unique_name}")
+        )
 
-            processor = processor_class()
+        # initialize processor
+        processor = node.processor_class()
+        processor.register_input_pipe(self.processor_pipes[node.processor_unique_name].input_pipe)
+        processor.register_output_pipe(self.processor_pipes[node.processor_unique_name].output_pipe)
+        self.processors[node.processor_unique_name] = processor
 
-            # ProcessorMeta.registry[processor_class_name]
-            # processor = processor_class()
 
-            
-
-
-            # Get incoming and outgoing edges for this node
-            incoming_edges = [edge for edge in self.edges if edge.target_node_unique_name == node_name]
-            outgoing_edges = [edge for edge in self.edges if edge.source_node_unique_name == node_name]
-            
-            # Register input pipes (N to 1 case)
-            if len(incoming_edges) == 0:
-                # Root node - no input pipes needed
-                pass
-            elif len(incoming_edges) == 1:
-                # Simple 1-to-1 connection
-                input_pipe = self.pipes[incoming_edges[0].edge_unique_name]
-                processor.register_input_pipe(input_pipe)
-            elif len(incoming_edges) > 1:
-                # N-to-1 connection: create a connector pipe
-                connector_pipe = AsyncPipe(pipe_id=f"connector_{node_name}")
-                processor.register_input_pipe(connector_pipe)
-                
-                # Start async task to merge multiple inputs into connector pipe
-                input_pipes = [self.pipes[edge.edge_unique_name] for edge in incoming_edges]
-                asyncio.create_task(self._merge_pipes(input_pipes, connector_pipe))
-            
-            # Register output pipes (1 to N case)
-            if len(outgoing_edges) == 0:
-                # Leaf node - no output pipes needed
-                pass
-            elif len(outgoing_edges) == 1:
-                # Simple 1-to-1 connection
-                output_pipe = self.pipes[outgoing_edges[0].edge_unique_name]
-                processor.register_output_pipe(output_pipe)
-            elif len(outgoing_edges) > 1:
-                # 1-to-N connection: processors will duplicate output to all pipes
-                for edge in outgoing_edges:
-                    output_pipe = self.pipes[edge.edge_unique_name]
-                    processor.register_output_pipe(output_pipe)
-
-        # Step 4: Start all processor execution tasks
-        self.processor_tasks = []
-        for node_name in traverse_graph_generator_dfs(self.nx_graph, self.root_node):
-            processor = self.processors[node_name]
-            task = asyncio.create_task(processor.execute())
-            self.processor_tasks.append(task)
-
-    async def _merge_pipes(self, input_pipes: List[PipeInterface], output_pipe: PipeInterface):
+    async def _fan_in_pipes(self, input_pipes: List[PipeInterface], output_pipe: PipeInterface):
         """Merge multiple input pipes into a single output pipe using asyncio.as_completed"""
         async def read_pipe_task(pipe):
             """Read all data from a single pipe"""
@@ -182,6 +125,17 @@ class GraphBase():
         
         # Close the output pipe when all inputs are exhausted
         await output_pipe.close()
+    
+
+    async def _fan_out_pipes(self, source_pipe: PipeInterface, output_pipes: List[PipeInterface]):
+        """
+        Fan out data from a single source pipe to multiple output pipes. Copy the data from the source pipe to each output pipe.
+        """
+        async for data in source_pipe:
+            async for pipe in output_pipes:
+                await pipe.put(data)
+        
+        await source_pipe.close()
 
     
     async def astream(self, input_data) -> AsyncGenerator[Any, None]:

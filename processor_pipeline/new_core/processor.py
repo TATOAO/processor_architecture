@@ -56,25 +56,13 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
     """
     def __init__(self, 
             processor_id: Optional[str] = None, 
-            input_pipe: PipeInterface = ..., 
-            output_pipe: PipeInterface = ..., 
             output_strategy: str = None,
             logger: Logger = None, 
             max_concurrent: int = None):
 
         # Main workflow pipes - these are the only pipes that connect to the actual processing workflow
-        self.input_pipe = input_pipe
-        self.output_pipe = output_pipe
-        
-        # Registered pipes for merging inputs and broadcasting outputs
-        self._registered_input_pipes: Set[PipeInterface] = set()
-        self._registered_output_pipes: Set[PipeInterface] = set()
-        self._pipe_registration_lock = asyncio.Lock()
-        
-        # Background tasks for input merging and output broadcasting
-        self._input_merger_task: Optional[asyncio.Task] = None
-        self._output_broadcaster_task: Optional[asyncio.Task] = None
-        self._merger_broadcaster_running = False
+        self.input_pipe = None
+        self.output_pipe = None
         
         # Use meta values as defaults if available
         meta = getattr(self.__class__, '_meta', {})
@@ -115,80 +103,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         await main_processing_task
 
-    async def _input_merger(self) -> None:
-        """
-        Background task that merges input from all registered input pipes into the main input pipe.
-        This runs continuously and handles dynamic registration of new input pipes.
-        """
-        merger_tasks = set()
-        
-        async def merge_from_pipe(pipe: PipeInterface) -> None:
-            """Merge data from a single input pipe into the main input pipe"""
-            try:
-                async for message_id, data in pipe:
-                    await self.input_pipe.put(data)
-            except Exception as e:
-                self.logger.error(f"Error in input merger for pipe: {e}")
-                self.logger.error(traceback.format_exc())
-        
-        try:
-            while self._merger_broadcaster_running:
-                # Check for new registered input pipes
-                async with self._pipe_registration_lock:
-                    current_pipes = self._registered_input_pipes.copy()
-                
-                # Start merger tasks for any new pipes
-                for pipe in current_pipes:
-                    # Check if we already have a task for this pipe
-                    if not any(task.get_name() == f"merger_{id(pipe)}" for task in merger_tasks if not task.done()):
-                        task = asyncio.create_task(merge_from_pipe(pipe))
-                        task.set_name(f"merger_{id(pipe)}")
-                        merger_tasks.add(task)
-                
-                # Clean up completed tasks
-                merger_tasks = {task for task in merger_tasks if not task.done()}
-                
-                # Wait a bit before checking for new pipes
-                await asyncio.sleep(0.1)
-                
-        except asyncio.CancelledError:
-            self.logger.debug("Input merger task cancelled")
-        except Exception as e:
-            self.logger.error(f"Error in input merger: {e}")
-            self.logger.error(traceback.format_exc())
-        finally:
-            # Cancel all merger tasks
-            for task in merger_tasks:
-                if not task.done():
-                    task.cancel()
-            # Wait for all tasks to complete
-            if merger_tasks:
-                await asyncio.gather(*merger_tasks, return_exceptions=True)
-
-    async def _output_broadcaster(self) -> None:
-        """
-        Background task that broadcasts output from the main output pipe to all registered output pipes.
-        This runs continuously and handles dynamic registration of new output pipes.
-        """
-        try:
-            # Use the peek mechanism to avoid consuming from the main output pipe
-            observer_id = await self.output_pipe.register_observer("broadcaster")
-            
-            async for message_id, data in self.output_pipe.peek_aiter(observer_id):
-                # Broadcast to all registered output pipes
-                async with self._pipe_registration_lock:
-                    broadcast_tasks = []
-                    for pipe in self._registered_output_pipes:
-                        broadcast_tasks.append(asyncio.create_task(pipe.put(data)))
-                    
-                    if broadcast_tasks:
-                        await asyncio.gather(*broadcast_tasks, return_exceptions=True)
-                        
-        except asyncio.CancelledError:
-            self.logger.debug("Output broadcaster task cancelled")
-        except Exception as e:
-            self.logger.error(f"Error in output broadcaster: {e}")
-            self.logger.error(traceback.format_exc())
 
     async def peek_astream(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
         """
@@ -275,6 +189,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 raise e
             finally:
                 await self.output_pipe.close()
+                await self.input_pipe.close()
                 return results       # return result
 
 
@@ -329,7 +244,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
 
 
-
     async def execute(self) -> List[Any]:
         """
         Execute the processor. A non blocking method that will run processor.process() whenever input pipe
@@ -338,176 +252,42 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         push data to output pipe as soon as it is processed
 
         """
-        # Start merger/broadcaster tasks if needed
-        await self._start_merger_broadcaster_if_needed()
         
-        try:
-            if self.output_strategy == OutputStrategy.ASAP:
-                return await self.execute_output_asap()
-            elif self.output_strategy == OutputStrategy.ORDERED:
-                if inspect.isasyncgenfunction(self.process):
-                    return await self.execute_output_ordered_async_generator()
-                else:
-                    return await self.execute_output_ordered()
+        if self.output_strategy == OutputStrategy.ASAP:
+            return await self.execute_output_asap()
+        elif self.output_strategy == OutputStrategy.ORDERED:
+            if inspect.isasyncgenfunction(self.process):
+                return await self.execute_output_ordered_async_generator()
             else:
-                raise ValueError(f"Invalid output strategy: {self.output_strategy}")
-        finally:
-            # Ensure cleanup happens even if execution fails
-            await self._stop_merger_broadcaster()
+                return await self.execute_output_ordered()
+        else:
+            raise ValueError(f"Invalid output strategy: {self.output_strategy}")
 
 
-    
     async def initialize(self) -> None:
         """Initialize the processor and start merger/broadcaster tasks if there are registered pipes"""
-        await self._start_merger_broadcaster_if_needed()
+        pass
     
     async def cleanup(self) -> None:
         """Cleanup the processor and stop merger/broadcaster tasks"""
         await self._stop_merger_broadcaster()
 
-    async def _start_merger_broadcaster_if_needed(self) -> None:
-        """Start merger and broadcaster tasks if they aren't already running and there are registered pipes"""
-        if self._merger_broadcaster_running:
-            return
-            
-        async with self._pipe_registration_lock:
-            has_registered_pipes = len(self._registered_input_pipes) > 0 or len(self._registered_output_pipes) > 0
-        
-        if has_registered_pipes:
-            await self._start_merger_broadcaster()
-
-    async def _start_merger_broadcaster(self) -> None:
-        """Start the merger and broadcaster background tasks"""
-        if self._merger_broadcaster_running:
-            return
-            
-        self._merger_broadcaster_running = True
-        
-        # Start input merger task
-        if self._input_merger_task is None or self._input_merger_task.done():
-            self._input_merger_task = asyncio.create_task(self._input_merger())
-            self._input_merger_task.set_name(f"input_merger_{self.processor_id}")
-        
-        # Start output broadcaster task  
-        if self._output_broadcaster_task is None or self._output_broadcaster_task.done():
-            self._output_broadcaster_task = asyncio.create_task(self._output_broadcaster())
-            self._output_broadcaster_task.set_name(f"output_broadcaster_{self.processor_id}")
-            
-        self.logger.debug(f"Started merger/broadcaster tasks for processor {self.processor_id}")
-
-    async def _stop_merger_broadcaster(self) -> None:
-        """Stop the merger and broadcaster background tasks"""
-        if not self._merger_broadcaster_running:
-            return
-            
-        self._merger_broadcaster_running = False
-        
-        # Cancel and wait for tasks to complete
-        tasks_to_cancel = []
-        if self._input_merger_task and not self._input_merger_task.done():
-            tasks_to_cancel.append(self._input_merger_task)
-        if self._output_broadcaster_task and not self._output_broadcaster_task.done():
-            tasks_to_cancel.append(self._output_broadcaster_task)
-            
-        for task in tasks_to_cancel:
-            task.cancel()
-            
-        if tasks_to_cancel:
-            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
-            
-        self.logger.debug(f"Stopped merger/broadcaster tasks for processor {self.processor_id}")
-
     def register_input_pipe(self, pipe: PipeInterface) -> None:
         """
-        Register an input pipe for merging. This pipe's data will be merged into the main input pipe.
-        Can be called dynamically even after the processor has started running.
-        
+        Register an input pipe for the processor.
         Args:
-            pipe: The input pipe to register for merging
+            pipe: The input pipe to register for the processor
         """
-        # If this is the first input pipe and we don't have a main input pipe, make it the main one
-        if self.input_pipe is ... and not self._registered_input_pipes:
-            self.input_pipe = pipe
-            return
-            
-        # Add to registered input pipes for merging
-        async def _register():
-            async with self._pipe_registration_lock:
-                self._registered_input_pipes.add(pipe)
-            # Start merger/broadcaster if not already running
-            await self._start_merger_broadcaster_if_needed()
+        self.input_pipe = pipe
         
-        # If we're in an async context, run immediately, otherwise store for later
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(_register())
-        except RuntimeError:
-            # No event loop running, store for later - merger will pick it up when started
-            self._registered_input_pipes.add(pipe)
-
     def register_output_pipe(self, pipe: PipeInterface) -> None:
         """
-        Register an output pipe for broadcasting. Data from the main output pipe will be copied to this pipe.
-        Can be called dynamically even after the processor has started running.
-        
+        Register an output pipe for the processor.
         Args:
-            pipe: The output pipe to register for broadcasting
+            pipe: The output pipe to register for the processor
         """
-        # If this is the first output pipe and we don't have a main output pipe, make it the main one
-        if self.output_pipe is ... and not self._registered_output_pipes:
-            self.output_pipe = pipe
-            return
-            
-        # Add to registered output pipes for broadcasting
-        async def _register():
-            async with self._pipe_registration_lock:
-                self._registered_output_pipes.add(pipe)
-            # Start merger/broadcaster if not already running
-            await self._start_merger_broadcaster_if_needed()
-        
-        # If we're in an async context, run immediately, otherwise store for later
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(_register())
-        except RuntimeError:
-            # No event loop running, store for later - broadcaster will pick it up when started
-            self._registered_output_pipes.add(pipe)
+        self.output_pipe = pipe
 
-    def unregister_input_pipe(self, pipe: PipeInterface) -> None:
-        """
-        Unregister an input pipe from merging.
-        
-        Args:
-            pipe: The input pipe to unregister
-        """
-        async def _unregister():
-            async with self._pipe_registration_lock:
-                self._registered_input_pipes.discard(pipe)
-        
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(_unregister())
-        except RuntimeError:
-            # No event loop running, remove directly
-            self._registered_input_pipes.discard(pipe)
-
-    def unregister_output_pipe(self, pipe: PipeInterface) -> None:
-        """
-        Unregister an output pipe from broadcasting.
-        
-        Args:
-            pipe: The output pipe to unregister
-        """
-        async def _unregister():
-            async with self._pipe_registration_lock:
-                self._registered_output_pipes.discard(pipe)
-        
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(_unregister())
-        except RuntimeError:
-            # No event loop running, remove directly
-            self._registered_output_pipes.discard(pipe)
     
     def statistics(self) -> Dict[str, Any]:
         """Get performance and status statistics for the processor"""

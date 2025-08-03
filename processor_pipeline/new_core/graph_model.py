@@ -3,6 +3,8 @@ from pydantic import BaseModel, field_validator, ConfigDict, Field, computed_fie
 from typing import Optional
 
 class Node(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     processor_class_name: str
     processor_unique_name: str
 

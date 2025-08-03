@@ -24,23 +24,29 @@ def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]
         raise ValueError(f"Node {node_unique_name} not found in graph")
     
     predecessors = list(nx_graph.predecessors(node_unique_name))
-    return predecessors
+    predecessors_nodes = [nx_graph.nodes[node]['data'] for node in predecessors]
+    return predecessors_nodes
 
-def get_next_nodes_names(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
+def get_next_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
     """Get all nodes that come after the given node in the graph"""
     if node_unique_name not in nx_graph:
         raise ValueError(f"Node {node_unique_name} not found in graph")
     
     successors = list(nx_graph.successors(node_unique_name))
-    return successors
+    successors_nodes = [nx_graph.nodes[node]['data'] for node in successors]
+    return successors_nodes
 
 def get_root_nodes(nx_graph: nx.DiGraph) -> List[str]:
     """Get all nodes that have no incoming edges (root nodes)"""
-    return [node for node in nx_graph.nodes() if nx_graph.in_degree(node) == 0]
+    root_nodes = [node for node in nx_graph.nodes() if nx_graph.in_degree(node) == 0]
+    root_nodes_nodes = [nx_graph.nodes[node]['data'] for node in root_nodes]
+    return root_nodes_nodes
 
 def get_leaf_nodes(nx_graph: nx.DiGraph) -> List[str]:
     """Get all nodes that have no outgoing edges (leaf nodes)"""
-    return [node for node in nx_graph.nodes() if nx_graph.out_degree(node) == 0]
+    leaf_nodes = [node for node in nx_graph.nodes() if nx_graph.out_degree(node) == 0]
+    leaf_nodes_nodes = [nx_graph.nodes[node]['data'] for node in leaf_nodes]
+    return leaf_nodes_nodes
 
 def get_node_paths(nx_graph: nx.DiGraph, source_node: str, target_node: str) -> List[List[str]]:
     """Get all possible paths from source to target node"""

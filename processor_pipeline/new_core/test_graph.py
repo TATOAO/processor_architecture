@@ -53,14 +53,22 @@ if __name__ == "__main__":
     async def main():
         start_time = time.time()
 
-        graph = GraphBase(nodes=[
-            Node(processor_class_name="ChunkerProcessor", processor_unique_name="chunker_processor_1"),
-            Node(processor_class_name="HasherProcessor", processor_unique_name="hasher_processor_1"),
-        ], edges=[
-            Edge(source_node_unique_name="chunker_processor_1", 
-                target_node_unique_name="hasher_processor_1", 
-                edge_unique_name="edge_1"),
-        ])
+        graph = GraphBase(
+            nodes=[
+                Node(
+                    processor_class_name="ChunkerProcessor", 
+                    processor_unique_name="chunker_processor_1"),
+                Node(
+                    processor_class_name="HasherProcessor", 
+                    processor_unique_name="hasher_processor_1"),
+            ], edges=[
+                Edge(source_node_unique_name="chunker_processor_1", 
+                    target_node_unique_name="hasher_processor_1", 
+                    edge_unique_name="edge_1"),
+            ], processor_id = "graph_1"
+        )
+
+        await graph.initialize()
 
         def init_generator_1():
             return [
@@ -68,14 +76,13 @@ if __name__ == "__main__":
                 "O" * 10,
             ]
 
-        def init_generator_2():
+        async def init_generator_2():
             for i in range(10):
                 yield "X" * 10
                 yield "O" * 10
                 yield "X" * 10
 
-
-        async for data in graph.astream(init_generator_1):
+        async for data in graph.astream(init_generator_2):
             print('result', data)
 
         end_time = time.time()

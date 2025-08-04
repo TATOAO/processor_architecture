@@ -10,8 +10,6 @@ from processor_pipeline.new_core.graph_model import Node, Edge
 class ChunkerProcessor(AsyncProcessor):
     meta = {
         "name": "ChunkerProcessor",
-        "input_pipe_type": "AsyncPipe",
-        "output_pipe_type": "AsyncPipe",
         "output_strategy": "ordered",
     }
 
@@ -32,8 +30,6 @@ class ChunkerProcessor(AsyncProcessor):
 class HasherProcessor(AsyncProcessor):
     meta = {
         "name": "HasherProcessor",
-        "input_pipe_type": "AsyncPipe",
-        "output_pipe_type": "AsyncPipe",
         "output_strategy": "asap",
     }
 

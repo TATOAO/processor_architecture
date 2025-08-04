@@ -135,6 +135,7 @@ class GraphBase(AsyncProcessor):
         for node in self.nodes:
             self.initialize_node(node)
 
+        # Get output pipe type from meta (defaults are now set in ProcessorMeta)
         this_output_pipe_type = self.meta["output_pipe_type"]
         the_output_pipe = PipeMeta.registry[this_output_pipe_type](
             pipe_id=f"output_pipe_{self.processor_id}"
@@ -143,7 +144,7 @@ class GraphBase(AsyncProcessor):
         self.register_output_pipe(the_output_pipe)
 
 
-        graph_input_pipe_type = self.meta["input_pipe_type"]
+        graph_input_pipe_type = self.input_pipe_type
         graph_input_pipe = PipeMeta.registry[graph_input_pipe_type](
             pipe_id=f"input_pipe_{self.processor_id}"
         )
@@ -176,9 +177,11 @@ class GraphBase(AsyncProcessor):
 
 
     def initialize_node(self, node: Node):
-        input_pipe_type = node.processor_class.meta["input_pipe_type"]
+        # Get pipe types from meta (defaults are now set in ProcessorMeta)
+        meta = getattr(node.processor_class, '_meta', {})
+        input_pipe_type = meta["input_pipe_type"]
         input_pipe_class = PipeMeta.registry[input_pipe_type]
-        output_pipe_type = node.processor_class.meta["output_pipe_type"]
+        output_pipe_type = meta["output_pipe_type"]
         output_pipe_class = PipeMeta.registry[output_pipe_type]
         self.processor_pipes[node.processor_unique_name] = ProcessorDirectPipe(
             input_pipe=input_pipe_class(pipe_id=f"input_pipe_{node.processor_unique_name}"),

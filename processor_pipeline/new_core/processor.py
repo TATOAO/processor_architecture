@@ -95,6 +95,11 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         
         if max_concurrent is None:
             max_concurrent = meta.get('max_concurrent', 10)
+        
+        # Get pipe types from meta (defaults are now set in ProcessorMeta)
+        self.input_pipe_type = meta["input_pipe_type"]
+        self.output_pipe_type = meta["output_pipe_type"]
+
             
         self.semaphore = asyncio.Semaphore(max_concurrent)
 

@@ -16,10 +16,20 @@ class ProcessorMeta(ABCMeta):
         cls = super().__new__(mcs, name, bases, namespace)
         if "meta" in namespace:
             meta = namespace["meta"]
+            
+            # Set default pipe types if not provided
+            if "input_pipe_type" not in meta:
+                meta["input_pipe_type"] = "AsyncPipe"
+            if "output_pipe_type" not in meta:
+                meta["output_pipe_type"] = "AsyncPipe"
+            
             # Store the complete meta information on the class
             cls._meta = meta
             if "name" in meta:
                 mcs.registry[meta["name"]] = cls
+            else:
+                raise ValueError(f"Processor {name} must have a name")
+            
         
         # Validate process method signature
         if "process" in namespace:

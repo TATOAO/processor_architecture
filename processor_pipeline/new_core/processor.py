@@ -341,7 +341,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 self.logger.debug(f"Async intake completed, sent {item_count} items")
                 await self.input_pipe.put(None)
             intake_task = asyncio.create_task(intake_method())
-        elif hasattr(data, '__iter__'):
+        elif isinstance(data, list):
             async def intake_method():
                 item_count = 0
                 for item in data:
@@ -352,6 +352,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             intake_task = asyncio.create_task(intake_method())
         elif data is None:
             intake_task = asyncio.create_task(asyncio.sleep(0))
+        else:
+            # a one time intake input
+            intake_task = asyncio.create_task(self.input_pipe.put(data))
         
         # Create main processing task based on output strategy
         if self.output_strategy == OutputStrategy.ASAP:

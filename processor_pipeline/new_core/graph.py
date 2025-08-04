@@ -253,6 +253,7 @@ class GraphBase(AsyncProcessor):
         """
         tasks = []
         root_node = get_root_nodes(self.nx_graph)[0]
+        caught_exception = None
         try:
             for node in self.nodes:
                 self.logger.info(f"Graph starting processors: {node.processor_unique_name}")
@@ -268,9 +269,12 @@ class GraphBase(AsyncProcessor):
         except Exception as e:
             self.logger.error(f"Error executing graph: {e}")
             self.logger.error(traceback.format_exc())
+            caught_exception = e
         finally:
             await self.input_pipe.close()
             await self.output_pipe.close()
+            if caught_exception:
+                raise caught_exception
 
 
     async def process(self, data: Any, *args, **kwargs) -> Any:

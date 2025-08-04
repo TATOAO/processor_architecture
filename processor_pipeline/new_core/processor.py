@@ -200,7 +200,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             except Exception as e:
                 self.logger.error(f"Task {current_task_num} failed: {e}")
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
-                raise e
             finally:
                 end_time = asyncio.get_event_loop().time()
                 processing_time = end_time - start_time
@@ -221,7 +220,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")
                 self.logger.error(traceback.format_exc())
-                raise e
             finally:
                 await self.output_pipe.close()
                 self.logger.info(f"execute_output_asap completed for {self.processor_id}")
@@ -253,7 +251,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")
                 self.logger.error(traceback.format_exc())
-                raise e
             finally:
                 await self.output_pipe.close()
                 await self.input_pipe.close()
@@ -266,7 +263,6 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         """
         self.logger.info(f"Starting execute_output_ordered_async_generator for {self.processor_id}")
         task_ids = []
-        results = []
         task_queue_dict = defaultdict(asyncio.Queue)
 
         async def process_task(data: Any, message_id: str) -> Any:
@@ -302,19 +298,20 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         async with self.semaphore:
             try:
+                task_allocated = []
                 input_count = 0
                 async for message_id, data in self.input_pipe:
                     input_count += 1
                     task_ids.append(message_id)
                     task = asyncio.create_task(process_task(data, message_id=message_id))
+                    task_allocated.append(task)
                 
                 self.logger.info(f"Starting ordered output for {len(task_ids)} tasks")
-                results = await output_from_task_queue_with_order()
+                results, *_ = await asyncio.gather(output_from_task_queue_with_order(), *task_allocated)
 
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")
                 self.logger.error(traceback.format_exc())
-                raise e
             finally:
                 await self.output_pipe.close()
                 self.logger.info(f"execute_output_ordered_async_generator completed for {self.processor_id}")

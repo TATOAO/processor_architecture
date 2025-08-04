@@ -23,6 +23,8 @@ class ChunkerProcessor(AsyncProcessor):
             if input_data[0] == "O":
                 s = 0.5
 
+            raise Exception("test")
+
             await asyncio.sleep(s)
             logger.info(f"sleeping for {s} seconds")
             yield input_data[i:i+chunk_size]
@@ -41,7 +43,7 @@ class HasherProcessor(AsyncProcessor):
         return hashed
 
 
-# python -m processor_pipeline.new_core.test_graph
+# python -m processor_pipeline.new_core.tests.test_graph
 if __name__ == "__main__":
     import time
 

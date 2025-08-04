@@ -53,7 +53,8 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
         try:
             return f"{hash(data)}_{uuid.uuid4()}"
         except Exception as e:
-            logger.error(f"Error generating message id: {e}: {data}")
+            logger.debug(f"Error generating message id: {e}: {data}")
+            logger.debug(f"Error generating message id: {e}")
             return f"{type(data)}_{uuid.uuid4()}"
 
     async def put(self, data: Any) -> None:

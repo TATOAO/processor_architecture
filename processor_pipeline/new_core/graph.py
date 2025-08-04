@@ -197,7 +197,7 @@ class GraphBase(AsyncProcessor):
         """Merge multiple input pipes into a single output pipe using asyncio.as_completed"""
         async def read_pipe_task(pipe):
             """Read all data from a single pipe"""
-            async for data in pipe:
+            async for message_id, data in pipe:
                 self.logger.info(f"Fan in pipe: {data}: from {pipe._pipe_id} to {output_pipe._pipe_id}")
                 if data is None:
                     break
@@ -221,7 +221,7 @@ class GraphBase(AsyncProcessor):
         Fan out data from a single source pipe to multiple output pipes. Copy the data from the source pipe to each output pipe.
         """
         try:
-            async for data in source_pipe:
+            async for message_id, data in source_pipe:
                 for pipe in output_pipes:
                     self.logger.info(f"Fan out pipe: {data}: from {source_pipe._pipe_id} to {pipe._pipe_id}")
                 await pipe.put(data)

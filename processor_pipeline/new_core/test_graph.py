@@ -21,9 +21,9 @@ class ChunkerProcessor(AsyncProcessor):
             s = random.random()
 
             if input_data[0] == "X":
-                s = 0.3
+                s = 0.6
             if input_data[0] == "O":
-                s = 0.7
+                s = 0.5
 
             await asyncio.sleep(s)
             logger.info(f"sleeping for {s} seconds")
@@ -39,8 +39,9 @@ class HasherProcessor(AsyncProcessor):
 
     async def process(self, input_data:str, *args, **kwargs) -> str:
 
-        hashed = hashlib.sha256(input_data.encode()).hexdigest()
-        logger.info(f"input_data: {input_data}, hashed: {hashed}")
+        # hashed = hashlib.sha256(input_data.encode()).hexdigest()
+        # logger.info(f"input_data: {input_data}, hashed: {hashed}")
+        hashed = input_data[0]
         return hashed
 
 
@@ -75,11 +76,11 @@ if __name__ == "__main__":
             ]
 
         async def init_generator_2():
-            yield "abcdefghij"
-            yield "1234567890"
+            yield "XXXXXXXXXX"
+            yield "OOOOOOOOOO"
 
         async for data in graph.astream(init_generator_2()):
-            logger.info(f'result: {data}')
+            logger.info(f'final and final result: {data}')
 
         end_time = time.time()
         logger.info(f"Time taken: {end_time - start_time} seconds")

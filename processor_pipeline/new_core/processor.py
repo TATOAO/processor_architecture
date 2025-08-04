@@ -280,7 +280,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         
         async def output_from_task_queue_with_order():
             result_list_of_list= []
-            for i, message_id in enumerate(task_ids):
+            for message_id in task_ids:
                 result = []
                 item_count = 0
                 while True:

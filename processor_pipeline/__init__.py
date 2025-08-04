@@ -5,7 +5,7 @@ A flexible framework for creating and executing data processing pipelines
 with both synchronous and asynchronous support.
 """
 
-from .core.processor import Processor, AsyncProcessor, ProcessorMeta
+from .core.processor import Processor, AsyncProcessor as CoreAsyncProcessor, ProcessorMeta
 from .core.pipeline import Pipeline, AsyncPipeline
 from .core.helper import (
     generate_execution_id,
@@ -27,8 +27,13 @@ from .core.helper import (
     create_processor_template
 )
 
+# Import new core components
+from .new_core import AsyncProcessor as NewAsyncProcessor, GraphBase, AsyncPipe
+from .new_core.graph_utils import get_root_nodes, get_previous_nodes, get_next_nodes
 
-from .new_core import *
+# For backward compatibility, make the old AsyncProcessor available as the default
+# Users can still access the new one via new_core.AsyncProcessor
+AsyncProcessor = CoreAsyncProcessor
 
 __version__ = "1.0.1"
 __author__ = "TATOAO"
@@ -36,10 +41,17 @@ __author__ = "TATOAO"
 __all__ = [
     # Core processor classes
     "Processor",
-    "AsyncProcessor", 
+    "AsyncProcessor",  # This is the old core AsyncProcessor for backward compatibility
+    "CoreAsyncProcessor",  # Explicit access to old core AsyncProcessor
+    "NewAsyncProcessor",  # Explicit access to new core AsyncProcessor
     "ProcessorMeta",
 
-    "new_core",
+    # New core components
+    "GraphBase",
+    "AsyncPipe",
+    "get_root_nodes",
+    "get_previous_nodes", 
+    "get_next_nodes",
     
     # Pipeline classes
     "Pipeline",

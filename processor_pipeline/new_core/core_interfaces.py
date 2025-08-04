@@ -36,7 +36,8 @@ class ProcessorMeta(ABCMeta):
                     raise TypeError(
                         f"Process method in {name} must accept *args and **kwargs. "
                         f"Current signature: {sig}. "
-                        f"Please define it as: async def process(self, input_data: Any, *args, **kwargs) -> AsyncGenerator[Any, None]:"
+                        f"Please add *args and **kwargs to your method signature. "
+                        f"You can keep your existing type hints for other parameters."
                     )
         
         return cls

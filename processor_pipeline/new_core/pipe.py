@@ -50,7 +50,11 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
 
     @classmethod
     def generate_random_message_id(cls, data: Any) -> str:
-        return f"{hash(data)}_{uuid.uuid4()}"
+        try:
+            return f"{hash(data)}_{uuid.uuid4()}"
+        except Exception as e:
+            logger.error(f"Error generating message id: {e}: {data}")
+            return f"{type(data)}_{uuid.uuid4()}"
 
     async def put(self, data: Any) -> None:
         self.statistics.historic_put_count += 1

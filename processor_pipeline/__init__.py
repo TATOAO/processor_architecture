@@ -28,7 +28,7 @@ from .core.helper import (
 )
 
 
-import new_core
+from .new_core import *
 
 __version__ = "1.0.1"
 __author__ = "TATOAO"

@@ -194,6 +194,8 @@ class GraphBase(AsyncProcessor):
         processor.register_output_pipe(self.processor_pipes[node.processor_unique_name].output_pipe)
         self.processors[node.processor_unique_name] = processor
 
+        processor.session = self.session
+
 
     async def _fan_in_pipes(self, input_pipes: List[PipeInterface], output_pipe: PipeInterface):
 

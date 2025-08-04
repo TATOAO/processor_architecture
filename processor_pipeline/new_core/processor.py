@@ -78,6 +78,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             output_strategy: str = None,
             max_concurrent: int = None):
 
+        # global dict to store things across all processors
+        self.session = {}
+
         # Main workflow pipes - these are the only pipes that connect to the actual processing workflow
         self.input_pipe = None
         self.output_pipe = None

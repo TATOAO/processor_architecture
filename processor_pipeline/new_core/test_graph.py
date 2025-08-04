@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import random
+from loguru import logger
 from typing import AsyncGenerator
 from processor_pipeline.new_core.processor import AsyncProcessor
 from processor_pipeline.new_core.graph import GraphBase
@@ -25,7 +26,7 @@ class ChunkerProcessor(AsyncProcessor):
                 s = 0.7
 
             await asyncio.sleep(s)
-            print("sleeping for", s, "seconds")
+            logger.info(f"sleeping for {s} seconds")
             yield input_data[i:i+chunk_size]
 
 class HasherProcessor(AsyncProcessor):
@@ -36,19 +37,16 @@ class HasherProcessor(AsyncProcessor):
         "output_strategy": "asap",
     }
 
-    async def process(self, input_data:str, *args, **kwargs) -> [str, None]:
+    async def process(self, input_data:str, *args, **kwargs) -> str:
+
         hashed = hashlib.sha256(input_data.encode()).hexdigest()
-        print("input_data", input_data, "hashed", hashed)
+        logger.info(f"input_data: {input_data}, hashed: {hashed}")
         return hashed
 
 
 # python -m processor_pipeline.new_core.test_graph
 if __name__ == "__main__":
-    from .pipe import AsyncPipe
-
     import time
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
 
     async def main():
         start_time = time.time()
@@ -77,16 +75,14 @@ if __name__ == "__main__":
             ]
 
         async def init_generator_2():
-            for i in range(10):
-                yield "X" * 10
-                yield "O" * 10
-                yield "X" * 10
+            yield "abcdefghij"
+            yield "1234567890"
 
-        async for data in graph.astream(init_generator_2):
-            print('result', data)
+        async for data in graph.astream(init_generator_2()):
+            logger.info(f'result: {data}')
 
         end_time = time.time()
-        print(f"Time taken: {end_time - start_time} seconds")
+        logger.info(f"Time taken: {end_time - start_time} seconds")
 
     import asyncio
     asyncio.run(main())

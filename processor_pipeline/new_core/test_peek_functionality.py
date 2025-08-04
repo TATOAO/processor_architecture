@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 from typing import AsyncGenerator
 from processor_pipeline.new_core.processor import AsyncProcessor
 from processor_pipeline.new_core.pipe import AsyncPipe
@@ -150,7 +150,6 @@ async def test_observer_cleanup():
 
 async def main():
     """Run all tests"""
-    logging.basicConfig(level=logging.INFO)
     
     await test_multiple_peek_consumers()
     await test_observer_cleanup()

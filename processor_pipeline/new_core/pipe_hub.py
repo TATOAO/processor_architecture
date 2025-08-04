@@ -11,7 +11,7 @@ import traceback
 import uuid
 from typing import Any, Dict, List, Optional, Set
 from collections import defaultdict
-from logging import Logger, getLogger
+from loguru import logger
 from .core_interfaces import PipeHubInterface, PipeInterface
 from .pipe import BufferPipe
 
@@ -39,9 +39,9 @@ class PipeHub(PipeHubInterface):
     - Providing centralized statistics and monitoring
     """
     
-    def __init__(self, hub_id: Optional[str] = None, logger: Optional[Logger] = None):
+    def __init__(self, hub_id: Optional[str] = None, logger=None):
         self.hub_id = hub_id or f"pipe_hub_{str(uuid.uuid4())[:8]}"
-        self.logger = logger or getLogger(f"PipeHub-{self.hub_id}")
+        self.logger = logger or logger.bind(name=f"PipeHub-{self.hub_id}")
         
         # Registry of named pipes
         self._pipes: Dict[str, PipeInterface] = {}

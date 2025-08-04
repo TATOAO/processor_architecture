@@ -33,8 +33,7 @@ if __name__ == "__main__":
     output_pipe = AsyncPipe(pipe_id="output_pipe_test1")
 
     import time
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
+    from loguru import logger
 
     async def main():
         start_time = time.time()

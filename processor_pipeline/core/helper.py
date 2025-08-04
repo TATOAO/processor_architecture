@@ -2,10 +2,7 @@ import json
 import os
 import datetime
 from typing import Any, Dict, List, Callable, Type, Optional, Union
-import logging
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+from loguru import logger
 
 # --- Utility Functions for Saving ---
 

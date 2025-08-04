@@ -18,7 +18,7 @@ def build_nx_graph(nodes: List[Node], edges: List[Edge]) -> nx.DiGraph:
     return G
 
 
-def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
+def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[Node]:
     """Get all nodes that come before the given node in the graph"""
     if node_unique_name not in nx_graph:
         raise ValueError(f"Node {node_unique_name} not found in graph")
@@ -27,7 +27,7 @@ def get_previous_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]
     predecessors_nodes = [nx_graph.nodes[node]['data'] for node in predecessors]
     return predecessors_nodes
 
-def get_next_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[str]:
+def get_next_nodes(nx_graph: nx.DiGraph, node_unique_name: str) -> List[Node]:
     """Get all nodes that come after the given node in the graph"""
     if node_unique_name not in nx_graph:
         raise ValueError(f"Node {node_unique_name} not found in graph")

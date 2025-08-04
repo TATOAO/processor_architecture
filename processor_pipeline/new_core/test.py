@@ -18,7 +18,7 @@ class TestProcessor(AsyncProcessor):
         #### default config ####
         "input_pipe_type": "AsyncPipe",
         "output_pipe_type": "AsyncPipe",
-        "output_strategy": "",
+        "output_strategy": "ordered",
         "max_concurrent": 100,
 
         #### metadata ####
@@ -56,7 +56,9 @@ if __name__ == "__main__":
 
     import time
     async def main():
-        processor = TestProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
+        processor = TestProcessor()
+        processor.register_input_pipe(input_pipe)
+        processor.register_output_pipe(output_pipe)
 
         print('processor meta 1', processor._meta)
         print('processor meta 2', processor._meta.get('max_concurrent'))
@@ -64,18 +66,17 @@ if __name__ == "__main__":
         print('processor meta 4', processor.processor_id)
 
         # max_concurent is not going to work since all task are io bounded
-        await input_pipe.put(1)
-        await input_pipe.put(2)
-        await input_pipe.put(3)
-        await input_pipe.put(4)
-        await input_pipe.put(5)
-        await input_pipe.put(None)
+        # datas = [1, 2, 3, 4, 5]
+
+        def datas():
+            for i in [1, 2, 3, 4, 5]:
+                yield i
 
         # result = await processor.execute()
         # print(result)
 
         start_time = time.time()
-        async for data in processor.astream():
+        async for data in processor.astream(datas()):
             print(data)
 
 

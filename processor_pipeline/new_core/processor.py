@@ -210,7 +210,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                     tasks.append(task)
 
                 self.logger.info(f"Processing {len(tasks)} tasks concurrently")
-                result = await asyncio.gather(*tasks)
+                final_results = await asyncio.gather(*tasks)
                 self.logger.info(f"All {len(tasks)} tasks completed successfully")
                 
             except Exception as e:
@@ -220,7 +220,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             finally:
                 await self.output_pipe.close()
                 self.logger.info(f"execute_output_asap completed for {self.processor_id}")
-                return result
+                return final_results
 
     async def execute_output_ordered(self) -> Any:
         """
@@ -315,7 +315,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 self.logger.info(f"execute_output_ordered_async_generator completed for {self.processor_id}")
                 return results
 
-    async def execute(self, data: Any) -> List[Any]:
+    async def execute(self, data: Any = None) -> List[Any]:
         """
         Execute the processor. A non blocking method that will run processor.process() whenever input pipe
         has data.
@@ -327,10 +327,10 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         
         # Determine intake method based on data type
         if data is AsyncGenerator or inspect.isasyncgenfunction(data) or hasattr(data, '__aiter__'):
-            generator_function = data
+            generator = data
             async def intake_method():
                 item_count = 0
-                async for item in generator_function():
+                async for item in generator:
                     item_count += 1
                     await self.input_pipe.put(item)
                 self.logger.debug(f"Async intake completed, sent {item_count} items")
@@ -345,8 +345,8 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 self.logger.debug(f"Sync intake completed, sent {item_count} items")
                 await self.input_pipe.put(None)
             intake_task = asyncio.create_task(intake_method())
-        else:
-            intake_task = asyncio.create_task(self.input_pipe.put(data))
+        elif data is None:
+            intake_task = asyncio.create_task(asyncio.sleep(0))
         
         # Create main processing task based on output strategy
         if self.output_strategy == OutputStrategy.ASAP:

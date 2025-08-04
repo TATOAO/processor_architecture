@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-import logging
+from loguru import logger
 from .core_interfaces import PipeInterface, PipeMeta
 from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple, Set
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
     meta = {
         "name": "AsyncPipe"
     }
-    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe")):
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger=logger):
         ### core attributes
         if pipe_id is None:
             self._pipe_id = f"pipe_{str(uuid.uuid4())}"
@@ -37,7 +37,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
             self._pipe_id = pipe_id
 
         self.queue = asyncio.Queue(maxsize)
-        self.logger = logger
+        self.logger = logger or logger.bind(name="AsyncPipe")
         
         # Observer/peek mechanism
         self._observers: Dict[str, asyncio.Queue] = {}
@@ -161,7 +161,7 @@ class BufferPipe(AsyncPipe):
     meta = {
         "name": "BufferPipe"
     }
-    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger: logging.Logger = logging.getLogger("AsyncPipe"), buffer_size: int = 100):
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger=logger, buffer_size: int = 100):
         super().__init__(maxsize, pipe_id, logger)
         self.buffer_size = buffer_size
         self.buffer_map = {}

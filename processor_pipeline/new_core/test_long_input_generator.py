@@ -14,11 +14,7 @@ from typing import Any, AsyncGenerator
 from processor_pipeline.new_core.pipe import AsyncPipe
 from processor_pipeline.new_core.processor import AsyncProcessor, OutputStrategy
 from processor_pipeline.new_core.core_interfaces import ProcessorMeta
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 class TestProcessor(AsyncProcessor, metaclass=ProcessorMeta):
     """

@@ -27,7 +27,10 @@ from .core.helper import (
     create_processor_template
 )
 
-__version__ = "0.1.0"
+
+import new_core
+
+__version__ = "1.0.1"
 __author__ = "TATOAO"
 
 __all__ = [
@@ -35,6 +38,8 @@ __all__ = [
     "Processor",
     "AsyncProcessor", 
     "ProcessorMeta",
+
+    "new_core",
     
     # Pipeline classes
     "Pipeline",

@@ -281,6 +281,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         self.logger.info(f"Starting execute_output_ordered_async_generator for {self.processor_id}")
         task_ids = []
         task_queue_dict = defaultdict(asyncio.Queue)
+        output_task_message_id_queue = asyncio.Queue()
 
         async def process_task(data: Any, message_id: str) -> Any:
             """
@@ -298,7 +299,10 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         
         async def output_from_task_queue_with_order():
             result_list_of_list= []
-            for message_id in task_ids:
+            while True:
+                message_id = await output_task_message_id_queue.get()
+                if message_id is None:
+                    break
                 result = []
                 item_count = 0
                 while True:
@@ -317,13 +321,14 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             try:
                 task_allocated = []
                 input_count = 0
+                output_task = asyncio.create_task(output_from_task_queue_with_order())
                 async for message_id, data in self.input_pipe:
                     input_count += 1
-                    task_ids.append(message_id)
                     task = asyncio.create_task(process_task(data, message_id=message_id))
+                    output_task_message_id_queue.put_nowait(message_id)
                     task_allocated.append(task)
+                output_task_message_id_queue.put_nowait(None)
                 
-                output_task = asyncio.create_task(output_from_task_queue_with_order())
                 self.logger.info(f"Starting ordered output for {len(task_ids)} tasks")
                 results, *_ = await asyncio.gather(output_task, *task_allocated)
 

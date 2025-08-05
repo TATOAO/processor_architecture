@@ -38,7 +38,12 @@ class HasherProcessor(AsyncProcessor):
         # logger.info(f"input_data: {input_data}, hashed: {hashed}")
         logger.info(f"HasherProcessor input_data: {input_data}")
         hashed = input_data[0]
-        return hashed
+
+        for i in range(5):
+            await asyncio.sleep(0.1)
+            logger.info(f"HasherProcessor sleeping for 0.1 seconds")
+            yield i
+
 
 
 # python -m processor_pipeline.new_core.tests.test_graph

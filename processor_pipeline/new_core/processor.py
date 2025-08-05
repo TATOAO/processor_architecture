@@ -323,8 +323,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                     task = asyncio.create_task(process_task(data, message_id=message_id))
                     task_allocated.append(task)
                 
+                output_task = asyncio.create_task(output_from_task_queue_with_order())
                 self.logger.info(f"Starting ordered output for {len(task_ids)} tasks")
-                results, *_ = await asyncio.gather(output_from_task_queue_with_order(), *task_allocated)
+                results, *_ = await asyncio.gather(output_task, *task_allocated)
 
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")

@@ -16,14 +16,11 @@ class ChunkerProcessor(AsyncProcessor):
     async def process(self, input_data:str, *args, **kwargs) -> AsyncGenerator[str, None]:
         chunk_size = 2
         for i in range(0, len(input_data), chunk_size):
-            s = random.random()
 
             if input_data[0] == "X":
-                s = 0.6
+                s = i
             if input_data[0] == "O":
-                s = 0.5
-
-            raise Exception("test")
+                s = 0.1 + i
 
             await asyncio.sleep(s)
             logger.info(f"sleeping for {s} seconds")
@@ -32,13 +29,14 @@ class ChunkerProcessor(AsyncProcessor):
 class HasherProcessor(AsyncProcessor):
     meta = {
         "name": "HasherProcessor",
-        "output_strategy": "asap",
+        "output_strategy": "ordered",
     }
 
     async def process(self, input_data:str, *args, **kwargs) -> str:
 
         # hashed = hashlib.sha256(input_data.encode()).hexdigest()
         # logger.info(f"input_data: {input_data}, hashed: {hashed}")
+        logger.info(f"HasherProcessor input_data: {input_data}")
         hashed = input_data[0]
         return hashed
 
@@ -67,6 +65,24 @@ if __name__ == "__main__":
 
         await graph.initialize()
 
+
+        async def monitor_pipe_hasher_input_task():
+            async for data in graph.processor_pipes["hasher_processor_1"].input_pipe.peek_aiter():
+                logger.info(f"[hasher processor input] monitor data: {data}")
+
+
+        task = asyncio.create_task(monitor_pipe_hasher_input_task())
+
+
+        async def monitor_pipe_hasher_output_task():
+            async for data in graph.processor_pipes["hasher_processor_1"].output_pipe.peek_aiter():
+                logger.info(f"[hasher processor output] monitor data: {data}")
+
+        task2 = asyncio.create_task(monitor_pipe_hasher_output_task())
+
+
+
+
         def init_generator_1():
             return [
                 "X" * 10,
@@ -80,8 +96,12 @@ if __name__ == "__main__":
         async for data in graph.astream(init_generator_2()):
             logger.info(f'final and final result: {data}')
 
+
+        await asyncio.gather(task, task2)
+
         end_time = time.time()
         logger.info(f"Time taken: {end_time - start_time} seconds")
+
 
     import asyncio
     asyncio.run(main())

@@ -235,21 +235,35 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         self.logger.info(f"Starting execute_output_ordered for {self.processor_id}")
         tasks = []
         results = []
+        task_queue = asyncio.Queue()
+
+
+        async def process_task(data: Any, message_id: str) -> Any:
+            self.logger.debug(f"processor {self.processor_id} start process for message_id={message_id}, data={data}")
+            task = asyncio.create_task(self.process(data, message_id=message_id))
+            task_queue.put_nowait(task)
+        
+        async def output_task() -> Any:
+            self.logger.debug(f"processor {self.processor_id} start output")
+            while True:
+                task = await task_queue.get()
+                if task is None:
+                    break
+                item = await task
+                await self.output_pipe.put(item)
+                results.append(item)
 
         async with self.semaphore:
             try:
-                input_count = 0
+                output_task = asyncio.create_task(output_task())
                 async for message_id, data in self.input_pipe:
-                    input_count += 1
-                    task = asyncio.create_task(self.process(data, message_id=message_id))
-                    tasks.append(task)
+                    self.logger.debug(f"processor {self.processor_id} start process for message_id={message_id}, data={data}")
+                    tasks.append(asyncio.create_task(process_task(data, message_id=message_id)))
 
                 self.logger.info(f"Executing {len(tasks)} tasks in order")
+                task_queue.put_nowait(None)
                 
-                for i, task in enumerate(tasks):
-                    result = await task
-                    await self.output_pipe.put(result)
-                    results.append(result)
+                await asyncio.gather(*tasks, output_task)
 
             except Exception as e:
                 self.logger.error(f"Error in processor {self.processor_id}: {e}")

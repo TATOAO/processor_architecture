@@ -75,6 +75,10 @@ async def fixed_input_stream(input_pipe: AsyncPipe):
     """
     for i in range(1, 5):
         await input_pipe.put(i)
+        await asyncio.sleep(0.1)
+    
+    await asyncio.sleep(10)
+
     await input_pipe.close()
 
 
@@ -93,27 +97,26 @@ async def main():
     input_pipe = AsyncPipe(pipe_id="input_pipe_test_long_input")
     output_pipe = AsyncPipe(pipe_id="output_pipe_test_long_input")
 
-    processor = TestProcessor(input_pipe=input_pipe, output_pipe=output_pipe)
+    processor = TestProcessor()
+    processor.register_input_pipe(input_pipe)
+    processor.register_output_pipe(output_pipe)
 
     # Create tasks for both terminal input streaming and processor output
     # terminal_task = asyncio.create_task(stream_terminal_input(input_pipe))
-    terminal_task = await fixed_input_stream(input_pipe)
+    terminal_task = asyncio.create_task(fixed_input_stream(input_pipe))
     monitor_task = asyncio.create_task(monitor_output(output_pipe))
 
-
-
-    
 
     processor_task = asyncio.create_task(processor.execute())
     
     # Wait for both tasks to complete
-    monitor, result = await asyncio.gather(monitor_task, processor_task)
+    intake_task, monitor, result = await asyncio.gather(terminal_task, monitor_task, processor_task)
     print(result)
 
     end_time = time.time()
     print(f"Time taken to put data into input pipe: {end_time - start_time} seconds")
 
-# python -m processor_pipeline.new_core.test_long_input_normal
+# python -m processor_pipeline.new_core.tests.test_long_input_normal
 if __name__ == "__main__":
     print("Enter numbers or text (press Ctrl+D or Ctrl+C to exit):")
     asyncio.run(main())

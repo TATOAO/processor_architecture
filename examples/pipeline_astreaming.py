@@ -10,9 +10,13 @@ class FakeProcessor(AsyncProcessor):
     }
 
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:
+
         async for item in data:
-            await asyncio.sleep(0.3)
-            yield item
+            print('xxxxxxxxxxx item', item)
+            for i in item:
+                await asyncio.sleep(0.3)
+                print('i', i)
+                yield i
 
 class FakeProcessor2(AsyncProcessor):
     meta = {
@@ -23,9 +27,11 @@ class FakeProcessor2(AsyncProcessor):
     
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:
         async for item in data:
+            print('item', item)
             for ch in item:
                 await asyncio.sleep(0.3)
-                yield len(str(ch))
+                print('ch', ch)
+                yield ch
             
 
 class FakeProcessor3(AsyncProcessor):
@@ -38,7 +44,7 @@ class FakeProcessor3(AsyncProcessor):
     async def process(self, data: AsyncGenerator[Any, None]) -> AsyncGenerator[Any, None]:
         async for item in data:
             await asyncio.sleep(0.1)
-            yield len(str(item))
+            yield str(item)
 
 
 
@@ -53,9 +59,12 @@ if __name__ == "__main__":
             FakeProcessor3(),
         ])
 
+        results = []
         async for item in pipeline.astream(["asdjfioajwef", "28903urf203f902390f"]):
-            print(item)
-            print('--')
+            results.append(item)
+
+        print(results)
+
 
 
     import asyncio

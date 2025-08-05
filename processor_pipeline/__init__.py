@@ -28,7 +28,7 @@ from .core.helper import (
 )
 
 # Import new core components
-from .new_core import AsyncProcessor as NewAsyncProcessor, GraphBase, AsyncPipe
+from .new_core import AsyncProcessor as NewAsyncProcessor, GraphBase, AsyncPipe, AsyncPipeline as NewAsyncPipeline
 from .new_core.graph_utils import get_root_nodes, get_previous_nodes, get_next_nodes
 
 # For backward compatibility, make the old AsyncProcessor available as the default
@@ -55,7 +55,8 @@ __all__ = [
     
     # Pipeline classes
     "Pipeline",
-    "AsyncPipeline",
+    "AsyncPipeline",  # This is the old core AsyncPipeline for backward compatibility
+    "NewAsyncPipeline",  # Explicit access to new graph-based AsyncPipeline
     
     # Helper functions
     "generate_execution_id",

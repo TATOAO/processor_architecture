@@ -130,7 +130,7 @@ class GraphBase(AsyncProcessor):
         self.background_tasks.append(task)
 
 
-    async def initialize(self):
+    def initialize(self):
 
         for node in self.nodes:
             self.initialize_node(node)

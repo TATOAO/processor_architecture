@@ -68,7 +68,7 @@ if __name__ == "__main__":
             ], processor_id = "graph_1"
         )
 
-        await graph.initialize()
+        graph.initialize()
 
 
         async def monitor_pipe_hasher_input_task():

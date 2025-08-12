@@ -49,6 +49,12 @@ docs = [
     "sphinx>=5.0",
     "sphinx-rtd-theme>=1.2.0",
 ]
+monitoring = [
+    "aiohttp>=3.8.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=11.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/processor-pipeline"

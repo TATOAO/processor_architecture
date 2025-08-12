@@ -68,6 +68,15 @@ class AsyncPipeline(GraphBase):
             
             # Share session across all processors
             processor.session = self.session
+            # If a session_id exists already, bind it for consistent logging at init-time
+            try:
+                existing_session_id = None
+                if isinstance(self.session, dict):
+                    existing_session_id = self.session.get("session_id")
+                if existing_session_id:
+                    processor.bind_session_id(existing_session_id)  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
         # Create the pipeline's own input and output pipes
         this_output_pipe_type = self.meta["output_pipe_type"]

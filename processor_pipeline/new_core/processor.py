@@ -12,21 +12,31 @@ from threading import Thread
 from loguru import logger
 
 # Configure loguru for better formatting and control
+def _ensure_session_id(record):
+    # Always provide a default session_id for formatting
+    record["extra"].setdefault("session_id", "-")
+    # Optional suffix to distinguish different inputs within the same session
+    record["extra"].setdefault("sid_suffix", "")
+    return True
+
 logger.remove()  # Remove default handler
 logger.add(
     "logs/processor_pipeline.log",
     rotation="10 MB",
     retention="7 days",
     level="INFO",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    # Include session_id in all log lines
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | sid={extra[session_id]}{extra[sid_suffix]} | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
     backtrace=True,
-    diagnose=True
+    diagnose=True,
+    filter=_ensure_session_id,
 )
 logger.add(
     lambda msg: print(msg, end=""),
     level="DEBUG",
-    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
-    colorize=True
+    format="<green>{time:HH:mm:ss}</green> | sid={extra[session_id]}{extra[sid_suffix]} | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
+    colorize=True,
+    filter=_ensure_session_id,
 )
 
 
@@ -119,13 +129,40 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         self.logger.debug(f"Initialized processor {self.processor_id} with output_strategy={self.output_strategy.value}, max_concurrent={max_concurrent}")
         self.logger.debug(f"Processor meta: {meta}")
 
-    async def astream(self, data: Any) -> AsyncGenerator[Any, None]:
+    def bind_session_id(self, session_id: str) -> None:
+        """Bind a session_id to this processor and its pipes for contextual logging."""
+        # Track in shared session dict
+        try:
+            self.session["session_id"] = session_id
+        except Exception:
+            self.session = {"session_id": session_id}
+
+        # Bind logger for this processor
+        self.logger = self.logger.bind(session_id=session_id)
+
+        # Bind logger for pipes if available
+        if getattr(self, "input_pipe", None) is not None and getattr(self.input_pipe, "logger", None) is not None:
+            try:
+                self.input_pipe.logger = self.input_pipe.logger.bind(session_id=session_id)
+            except Exception:
+                pass
+        if getattr(self, "output_pipe", None) is not None and getattr(self.output_pipe, "logger", None) is not None:
+            try:
+                self.output_pipe.logger = self.output_pipe.logger.bind(session_id=session_id)
+            except Exception:
+                pass
+
+    async def astream(self, data: Any, session_id: Optional[str] = None, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
         Process data without blocking.
         """
+        if session_id is None:
+            # Reuse existing session or generate a new one
+            session_id = (self.session.get("session_id") if isinstance(self.session, dict) else None) or str(uuid.uuid4())
+        self.bind_session_id(session_id)
         self.logger.info(f"Starting astream processing for {self.processor_id}")
 
-        main_processing_task = asyncio.create_task(self.execute(data))
+        main_processing_task = asyncio.create_task(self.execute(data, session_id=session_id))
         
         message_count = 0
         async for message_id, data in self.output_pipe:
@@ -135,7 +172,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         self.logger.info(f"Completed astream processing for {self.processor_id}, yielded {message_count} messages")
         await main_processing_task
 
-    async def peek_astream(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
+    async def peek_astream(self, observer_id: Optional[str] = None, session_id: Optional[str] = None, *args, **kwargs) -> AsyncGenerator[Any, None]:
         """
         Process data without blocking and without consuming from the output pipe.
         This allows multiple consumers to "peek" at the data without interfering 
@@ -147,13 +184,17 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         Yields:
             Any: Data from the processor's output pipe without consuming it
         """
+        if session_id is None:
+            session_id = (self.session.get("session_id") if isinstance(self.session, dict) else None) or str(uuid.uuid4())
+        self.bind_session_id(session_id)
+
         if observer_id is None:
             observer_id = f"observer_{str(uuid.uuid4())[:8]}"
         
         self.logger.info(f"Starting peek_astream for {self.processor_id} with observer_id={observer_id}")
         
         # Start the processing task
-        main_processing_task = asyncio.create_task(self.execute())
+        main_processing_task = asyncio.create_task(self.execute(session_id=session_id))
         
         # Get data through the peek mechanism
         message_count = 0
@@ -181,7 +222,10 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             start_time = asyncio.get_event_loop().time()
             
             try:
-                process_result = self.process(data, message_id=message_id)
+                short_id = (message_id or "").split("_")[0]
+                # Bind per-input suffix for this task's logs
+                with logger.contextualize(sid_suffix=f":{short_id}"):
+                    process_result = self.process(data, message_id=message_id)
                 
                 # Check if the process method returns an async generator
                 if inspect.isasyncgen(process_result):
@@ -240,7 +284,11 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
 
         async def process_task(data: Any, message_id: str) -> Any:
             self.logger.debug(f"processor {self.processor_id} start process for message_id={message_id}, data={data}")
-            task = asyncio.create_task(self.process(data, message_id=message_id))
+            short_id = (message_id or "").split("_")[0]
+            async def run_with_context():
+                with logger.contextualize(sid_suffix=f":{short_id}"):
+                    return await self.process(data, message_id=message_id)
+            task = asyncio.create_task(run_with_context())
             task_queue.put_nowait(task)
         
         async def output_task() -> Any:
@@ -287,7 +335,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             """
             may be having trouble if message is not unique?
             """
-            process_result = self.process(data, message_id=message_id)
+            short_id = (message_id or "").split("_")[0]
+            with logger.contextualize(sid_suffix=f":{short_id}"):
+                process_result = self.process(data, message_id=message_id)
             # if inspect.isasyncgen(process_result):
             item_count = 0
             async for item in process_result:
@@ -305,13 +355,15 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                     break
                 result = []
                 item_count = 0
-                while True:
-                    item = await task_queue_dict[message_id].get()
-                    if item is None:
-                        break
-                    item_count += 1
-                    result.append(item)
-                    await self.output_pipe.put(item)
+                short_id = (message_id or "").split("_")[0]
+                with logger.contextualize(sid_suffix=f":{short_id}"):
+                    while True:
+                        item = await task_queue_dict[message_id].get()
+                        if item is None:
+                            break
+                        item_count += 1
+                        result.append(item)
+                        await self.output_pipe.put(item)
                 
                 self.logger.debug(f"Completed queue for message_id={message_id} with {item_count} items")
                 result_list_of_list.append(result)
@@ -340,7 +392,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 self.logger.info(f"execute_output_ordered_async_generator completed for {self.processor_id}")
                 return results
 
-    async def execute(self, data: Any = None) -> List[Any]:
+    async def execute(self, data: Any = None, session_id: Optional[str] = None, *args, **kwargs) -> List[Any]:
         """
         Execute the processor. A non blocking method that will run processor.process() whenever input pipe
         has data.
@@ -348,6 +400,10 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         push data to output pipe as soon as it is processed
 
         """
+        if session_id is None:
+            session_id = (self.session.get("session_id") if isinstance(self.session, dict) else None) or str(uuid.uuid4())
+        self.bind_session_id(session_id)
+
         self.logger.info(f"Starting execute for {self.processor_id} with output strategy: {self.output_strategy.value}")
         
         # Determine intake method based on data type

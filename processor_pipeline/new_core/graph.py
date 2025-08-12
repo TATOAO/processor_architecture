@@ -249,10 +249,31 @@ class GraphBase(AsyncProcessor):
             raise ValueError("The graph should have exactly one root node")
 
 
-    async def execute(self, data: Any, *args, **kwargs) -> Any:
+    async def execute(self, data: Any, session_id: Optional[str] = None, *args, **kwargs) -> Any:
         """
         Execute the graph.
         """
+        # Ensure a session_id is bound for contextual logging across the graph
+        if session_id is None:
+            try:
+                session_id = self.session.get("session_id")  # type: ignore[attr-defined]
+            except Exception:
+                session_id = None
+            if session_id is None:
+                session_id = str(uuid.uuid4())
+
+        # Bind to graph and propagate to processors
+        self.bind_session_id(session_id)
+        for processor in self.processors.values():
+            try:
+                processor.bind_session_id(session_id)  # type: ignore[attr-defined]
+            except Exception:
+                # Fallback: set session dict; logs may miss binding for custom processors without method
+                try:
+                    processor.session["session_id"] = session_id  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
         tasks = []
         root_node = get_root_nodes(self.nx_graph)[0]
         caught_exception = None
@@ -261,9 +282,9 @@ class GraphBase(AsyncProcessor):
                 self.logger.info(f"Graph starting processors: {node.processor_unique_name}")
 
                 if node.processor_unique_name == root_node.processor_unique_name:
-                    task = asyncio.create_task(self.processors[node.processor_unique_name].execute(data, *args, **kwargs))
+                    task = asyncio.create_task(self.processors[node.processor_unique_name].execute(data, session_id=session_id, *args, **kwargs))
                 else:
-                    task = asyncio.create_task(self.processors[node.processor_unique_name].execute())
+                    task = asyncio.create_task(self.processors[node.processor_unique_name].execute(session_id=session_id))
                 tasks.append(task)
 
             # Wait for all processors to complete

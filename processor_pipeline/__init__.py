@@ -35,6 +35,14 @@ from .new_core.graph_utils import get_root_nodes, get_previous_nodes, get_next_n
 # Users can still access the new one via new_core.AsyncProcessor
 AsyncProcessor = CoreAsyncProcessor
 
+# Optional monitoring imports - only available if dependencies are installed
+try:
+    from .monitoring import enable_monitoring, MonitoringPlugin, MonitoredPipeline
+    _monitoring_available = True
+except ImportError:
+    # Monitoring dependencies not installed
+    _monitoring_available = False
+
 __version__ = "1.0.1"
 __author__ = "TATOAO"
 
@@ -79,3 +87,7 @@ __all__ = [
     "execute_processor_code_from_file",
     "create_processor_template"
 ]
+
+# Add monitoring components to __all__ if available
+if _monitoring_available:
+    __all__.extend(['enable_monitoring', 'MonitoringPlugin', 'MonitoredPipeline'])

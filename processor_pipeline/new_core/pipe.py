@@ -38,6 +38,11 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
 
         self.queue = asyncio.Queue(maxsize)
         self.logger = logger or logger.bind(name="AsyncPipe")
+        # ensure logger has default session_id to avoid formatting issues when not bound
+        try:
+            self.logger = self.logger.bind(session_id="-")
+        except Exception:
+            pass
         
         # Observer/peek mechanism
         self._observers: Dict[str, asyncio.Queue] = {}

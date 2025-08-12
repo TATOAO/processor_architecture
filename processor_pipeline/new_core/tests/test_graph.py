@@ -86,8 +86,6 @@ if __name__ == "__main__":
         task2 = asyncio.create_task(monitor_pipe_hasher_output_task())
 
 
-
-
         def init_generator_1():
             return [
                 "X" * 10,

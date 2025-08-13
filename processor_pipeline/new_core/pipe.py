@@ -37,7 +37,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
             self._pipe_id = pipe_id
 
         self.queue = asyncio.Queue(maxsize)
-        self.logger = logger or logger.bind(name="AsyncPipe")
+        self.logger = logger or logger.bind(name=self._pipe_id)
         # ensure logger has default session_id to avoid formatting issues when not bound
         try:
             self.logger = self.logger.bind(session_id="-")
@@ -172,7 +172,9 @@ class BufferPipe(AsyncPipe):
         "name": "BufferPipe"
     }
     def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger=logger, buffer_size: int = 100):
+        self.logger = logger or logger.bind(name="BufferPipe")
         super().__init__(maxsize, pipe_id, logger)
+
         self.buffer_size = buffer_size
         self.buffer_map = {}
 
@@ -220,6 +222,53 @@ class BufferPipe(AsyncPipe):
         data = [self.buffer[message_id] for message_id in last_n_messages_ids]
         return list(zip(last_n_messages_ids, data))
     
+
+
+class BlockingPipe(AsyncPipe):
+    """
+    Blocking pipe implementation using asyncio.Queue.
+    """
+    meta = {
+        "name": "BlockingPipe"
+    }
+
+    def __init__(self, maxsize: int = -1, pipe_id: Optional[str] = None, logger=logger, buffer_size: int = 100):
+        super().__init__(maxsize, pipe_id, logger)
+        # store id lists
+        self.messages_ids = []
+        # store id: data
+        self.blocked_data = []
+    
+
+    async def put(self, data: Any) -> None:
+
+        self.statistics.historic_put_count += 1
+        message_id = self.generate_random_message_id(data)
+        if data is None:
+            await self.queue.put((message_id, self.blocked_data))
+            # Also notify all observers of the None (end of stream)
+            async with self._observer_lock:
+                for observer_queue in self._observers.values():
+                    await observer_queue.put(None)
+            await self.queue.put(None)
+
+        else:   
+            self.blocked_data.append(data)
+            # Broadcast to all observers
+            async with self._observer_lock:
+                for observer_queue in self._observers.values():
+                    await observer_queue.put((message_id, data))
+    
+    async def get(self, timeout: Optional[float] = None) -> Any:
+
+        self.statistics.historic_get_count += 1
+        data = await self.queue.get()
+        if data is None:
+            return None
+        message_id, data = data
+        self.logger.debug(f"[{self._pipe_id}] [GET] data: {data} with message_id: {message_id}")
+        return (message_id, data)
+
 
 
 # python -m processor_pipeline.new_core.pipe

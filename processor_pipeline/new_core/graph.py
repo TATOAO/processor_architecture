@@ -205,6 +205,7 @@ class GraphBase(AsyncProcessor):
             async for message_id, data in pipe:
                 self.logger.info(f"Fan in pipe: {data}: from {pipe._pipe_id} to {output_pipe._pipe_id}")
                 if data is None:
+                    await output_pipe.put(data)
                     break
                 await output_pipe.put(data)
         
@@ -217,8 +218,8 @@ class GraphBase(AsyncProcessor):
             self.logger.error(f"Error fanning in pipes: {e}")
             self.logger.error(traceback.format_exc())
         finally:
-            # Close the output pipe when all inputs are exhausted
-            await output_pipe.close()
+            # Signal end-of-stream to output pipe so pipes like BlockingPipe can flush
+            await output_pipe.put(None)
     
 
     async def _fan_out_pipes(self, source_pipe: PipeInterface, output_pipes: List[PipeInterface]):
@@ -229,12 +230,17 @@ class GraphBase(AsyncProcessor):
             async for message_id, data in source_pipe:
                 for pipe in output_pipes:
                     self.logger.info(f"Fan out pipe: {data}: from {source_pipe._pipe_id} to {pipe._pipe_id}")
-                await pipe.put(data)
+                    await pipe.put(data)
         except Exception as e:
             self.logger.error(f"Error fanning out pipes: {e}")
             self.logger.error(traceback.format_exc())
         finally:
-            await source_pipe.close()
+            # Propagate end-of-stream to all downstream pipes
+            for pipe in output_pipes:
+                try:
+                    await pipe.put(None)
+                except Exception as e:
+                    self.logger.error(f"Error signaling end-of-stream to pipe {getattr(pipe, '_pipe_id', 'unknown')}: {e}")
 
     
     async def validate_graph(self):

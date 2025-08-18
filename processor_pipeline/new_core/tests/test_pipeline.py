@@ -56,11 +56,11 @@ if __name__ == "__main__":
         # await pipeline.initialize()
 
         # all_results = []
-        async for item in pipeline.astream(["asdjfioajwef", "28903urf203f902390f"]):
+        # async for item in pipeline.astream(["asdjfioajwef", "28903urf203f902390f"]):
             # all_results.append(item)
-            print('--', item)
-        # all_results = await pipeline.execute(["asdjfioajwef", "28903urf203f902390f"])
-        # print(all_results)
+            # print('--', item)
+        all_results = await pipeline.execute(["asdjfioajwef", "28903urf203f902390f"])
+        print(all_results)
 
 
     import asyncio

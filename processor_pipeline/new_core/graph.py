@@ -67,6 +67,8 @@ class GraphBase(AsyncProcessor):
         self.processor_pipes: Dict[str, ProcessorDirectPipe] = {}
         self.processors: Dict[str, ProcessorInterface] = {}
 
+        self.node_init_variables: Dict[str, Any] = {}
+
 
     async def dynamic_fan_in_pipes_task(self, node: Node):
         """
@@ -176,7 +178,12 @@ class GraphBase(AsyncProcessor):
 
 
 
-    def initialize_node(self, node: Node):
+    def initialize_node(self, node: Node ):
+
+        ### init variables for nodes
+        init_kwargs = self.node_init_variables.get(node.processor_unique_name, {})
+
+
         # Get pipe types from meta (defaults are now set in ProcessorMeta)
         meta = getattr(node.processor_class, '_meta', {})
         input_pipe_type = meta["input_pipe_type"]
@@ -189,7 +196,7 @@ class GraphBase(AsyncProcessor):
         )
 
         # initialize processor
-        processor = node.processor_class()
+        processor = node.processor_class(**init_kwargs)
         processor.register_input_pipe(self.processor_pipes[node.processor_unique_name].input_pipe)
         processor.register_output_pipe(self.processor_pipes[node.processor_unique_name].output_pipe)
         self.processors[node.processor_unique_name] = processor

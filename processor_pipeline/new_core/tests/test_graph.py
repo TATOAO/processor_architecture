@@ -4,7 +4,7 @@ import random
 from loguru import logger
 from typing import AsyncGenerator
 from processor_pipeline.new_core.processor import AsyncProcessor
-from processor_pipeline.new_core.graph import GraphBase
+from processor_pipeline.new_core.new_graph import GraphBase
 from processor_pipeline.new_core.graph_model import Node, Edge
 
 class ChunkerProcessor(AsyncProcessor):
@@ -44,10 +44,10 @@ class HasherProcessor(AsyncProcessor):
         logger.info(f"HasherProcessor 111 input_data: {input_data}")
         hashed = input_data[0]
 
-        for i in range(5):
+        for i in input_data:
             await asyncio.sleep(1)
             logger.info(f"HasherProcessor sleeping for 0.1 seconds")
-            yield i
+            yield f"{i} hasher 1"
         logger.warning("HasherProcessor1 completed")
 
 class HasherProcessor2(AsyncProcessor):
@@ -62,10 +62,10 @@ class HasherProcessor2(AsyncProcessor):
         # logger.info(f"input_data: {input_data}, hashed: {hashed}")
         logger.info(f"HasherProcessor 222 input_data: {input_data}")
 
-        for i in "abcde":
+        for i in input_data:
             await asyncio.sleep(1)
             logger.info(f"HasherProcessor sleeping for 0.1 seconds")
-            yield i
+            yield f"{i} hasher 2"
         logger.warning("HasherProcessor2 completed")
 
 
@@ -84,17 +84,17 @@ if __name__ == "__main__":
                 Node(
                     processor_class_name="HasherProcessor", 
                     processor_unique_name="hasher_processor_1"),
-                Node(
-                    processor_class_name="HasherProcessor2", 
-                    processor_unique_name="hasher_processor_2"),
+                # Node(
+                #     processor_class_name="HasherProcessor2", 
+                #     processor_unique_name="hasher_processor_2"),
 
             ], edges=[
                 Edge(source_node_unique_name="chunker_processor_1", 
                     target_node_unique_name="hasher_processor_1", 
                     edge_unique_name="edge_1"),
-                Edge(source_node_unique_name="chunker_processor_1", 
-                    target_node_unique_name="hasher_processor_2", 
-                    edge_unique_name="edge_2"),
+                # Edge(source_node_unique_name="chunker_processor_1", 
+                #     target_node_unique_name="hasher_processor_2", 
+                #     edge_unique_name="edge_2"),
             ], processor_id = "graph_1"
         )
 
@@ -120,6 +120,7 @@ if __name__ == "__main__":
         #         logger.info(f"[3333333333333 chunker processor output] monitor data: {data}")
 
 
+        task1 = asyncio.create_task(monitor_pipe_intake_task())
         # task1 = asyncio.create_task(monitor_pipe_hasher_input_task())
         # task2 = asyncio.create_task(monitor_pipe_chunk_output_task())
         # task3 = asyncio.create_task(monitor_pipe_hasher_input_task2())
@@ -144,6 +145,7 @@ if __name__ == "__main__":
 
 
         # await asyncio.gather(task1, task2, task3)
+        await task1
 
         end_time = time.time()
         logger.info(f"Time taken: {end_time - start_time} seconds")

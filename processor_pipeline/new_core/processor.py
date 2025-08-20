@@ -225,6 +225,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
                 self.logger.debug(f"Task {current_task_num} completed in {processing_time:.4f}s")
 
         async with self.semaphore:
+            final_results = []
             try:
                 input_count = 0
                 async for message_id, data in self.input_pipe:
@@ -418,6 +419,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             raise ValueError(f"Invalid output strategy: {self.output_strategy}")
         
         _, result = await asyncio.gather(intake_task, main_task)
+        await self.output_pipe.put(None)
         self.logger.info(f"Execute completed for {self.processor_id}")
         return result
 

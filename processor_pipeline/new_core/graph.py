@@ -77,7 +77,7 @@ class GraphBase(AsyncProcessor):
         precious_nodes = get_previous_nodes(self.nx_graph, node.processor_unique_name)
 
         if len(precious_nodes) == 0:
-            return asyncio.sleep(0)
+            return asyncio.create_task(asyncio.sleep(0), name=f"no_input_task_{node.processor_unique_name}")
 
         previous_input_pipes = [
             self.processor_pipes[previous_node.processor_unique_name].output_pipe 
@@ -164,8 +164,8 @@ class GraphBase(AsyncProcessor):
             # merge input pipes
             self.background_tasks.append(self.dynamic_fan_in_pipes_task(node))
 
-            # # merge output pipes
-            # self.background_tasks.append(self.dynamic_fan_out_pipes_task(node))
+            # merge output pipes
+            self.background_tasks.append(self.dynamic_fan_out_pipes_task(node))
 
 
 
@@ -226,8 +226,10 @@ class GraphBase(AsyncProcessor):
         try:
             # Create tasks for reading from each input pipe
             tasks = [asyncio.create_task(read_pipe_task(pipe), name=f"read_pipe_task_{pipe._pipe_id}") for pipe in input_pipes]
+            self.logger.info(f"Starting fan-in from {[pipe._pipe_id for pipe in input_pipes]} to {output_pipe._pipe_id}")
             # Wait for all tasks to complete
             await asyncio.gather(*tasks)
+            self.logger.info(f"All fan-in tasks completed from {[pipe._pipe_id for pipe in input_pipes]} to {output_pipe._pipe_id}")
         except Exception as e:
             # import ipdb; ipdb.set_trace()
             self.logger.error(f"Error fanning in pipes: {e}")
@@ -235,6 +237,7 @@ class GraphBase(AsyncProcessor):
         finally:
             # Signal end-of-stream to output pipe so pipes like BlockingPipe can flush
             # import ipdb; ipdb.set_trace()
+            self.logger.info(f"Sending end-of-stream to {output_pipe._pipe_id}")
             await output_pipe.put(None)
     
 
@@ -243,6 +246,7 @@ class GraphBase(AsyncProcessor):
         Fan out data from a single source pipe to multiple output pipes. Copy the data from the source pipe to each output pipe.
         """
         try:
+            self.logger.info(f"Starting fan-out from {source_pipe._pipe_id} to {[pipe._pipe_id for pipe in output_pipes]}")
             # import ipdb; ipdb.set_trace()
             async for message_id, data in source_pipe:
                 for pipe in output_pipes:

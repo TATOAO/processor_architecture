@@ -93,11 +93,9 @@ class AsyncPipeline(GraphBase):
 
         # Set up pipe connections for the sequential pipeline
         for node in self.nodes:
-            # merge input pipes
-            task = asyncio.create_task(self.dynamic_fan_in_pipes_task(node))
-            self.background_tasks.append(task)
-
-            # merge output pipes
+            # Only create fan-out tasks - each node pushes data to its successors
+            # Fan-in would cause racing issues where multiple consumers compete for the same data
+            # Fan-out ensures each downstream node gets an identical copy of the data
             task = asyncio.create_task(self.dynamic_fan_out_pipes_task(node))
             self.background_tasks.append(task)
         

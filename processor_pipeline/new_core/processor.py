@@ -405,7 +405,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             intake_task = asyncio.create_task(asyncio.sleep(0))
         else:
             # a one time intake input
-            intake_task = asyncio.create_task(self.input_pipe.put(data))
+            task1 = asyncio.create_task(self.input_pipe.put(data))
+            task2 = asyncio.create_task(self.input_pipe.put(None))
+            intake_task = asyncio.gather(task1, task2)
         
         # Create main processing task based on output strategy
         if self.output_strategy == OutputStrategy.ASAP:

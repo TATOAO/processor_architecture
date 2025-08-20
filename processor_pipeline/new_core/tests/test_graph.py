@@ -53,7 +53,7 @@ class HasherProcessor(AsyncProcessor):
 class HasherProcessor2(AsyncProcessor):
     meta = {
         "name": "HasherProcessor2",
-        "output_strategy": "asap",
+        "output_strategy": "ordered",
     }
 
     async def process(self, input_data:str, *args, **kwargs) -> str:
@@ -140,9 +140,11 @@ if __name__ == "__main__":
             yield "1234"
 
 
-        async for data in graph.astream(init_generator_3()):
-            logger.info(f'xxxxxxxxxxxxxxxx: {data}')
+        # async for data in graph.astream(init_generator_3()):
+        #     logger.info(f'xxxxxxxxxxxxxxxx: {data}')
 
+        async for data in graph.astream("1234"):
+            logger.info(f'xxxxxxxxxxxxxxxx: {data}')
 
         # await asyncio.gather(task1, task2, task3)
         await task1

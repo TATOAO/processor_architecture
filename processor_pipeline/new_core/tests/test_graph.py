@@ -21,10 +21,15 @@ class ChunkerProcessor(AsyncProcessor):
                 s = i
             if input_data[0] == "O":
                 s = 0.1 + i
+            else:
+                s = 0.1
 
+            logger.info(f"input_data: {input_data}, i: {i}, s: {s}")
             await asyncio.sleep(s)
             logger.info(f"sleeping for {s} seconds")
             yield input_data[i:i+chunk_size]
+        
+        logger.warning("ChunkerProcessor completed")
 
 class HasherProcessor(AsyncProcessor):
     meta = {
@@ -36,14 +41,33 @@ class HasherProcessor(AsyncProcessor):
 
         # hashed = hashlib.sha256(input_data.encode()).hexdigest()
         # logger.info(f"input_data: {input_data}, hashed: {hashed}")
-        logger.info(f"HasherProcessor input_data: {input_data}")
+        logger.info(f"HasherProcessor 111 input_data: {input_data}")
         hashed = input_data[0]
 
         for i in range(5):
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
             logger.info(f"HasherProcessor sleeping for 0.1 seconds")
             yield i
+        logger.warning("HasherProcessor1 completed")
 
+class HasherProcessor2(AsyncProcessor):
+    meta = {
+        "name": "HasherProcessor2",
+        "output_strategy": "ordered",
+    }
+
+    async def process(self, input_data:str, *args, **kwargs) -> str:
+
+        # hashed = hashlib.sha256(input_data.encode()).hexdigest()
+        # logger.info(f"input_data: {input_data}, hashed: {hashed}")
+        logger.info(f"HasherProcessor 222 input_data: {input_data}")
+        hashed = input_data[0]
+
+        for i in "abcde":
+            await asyncio.sleep(1)
+            logger.info(f"HasherProcessor sleeping for 0.1 seconds")
+            yield i
+        logger.warning("HasherProcessor2 completed")
 
 
 # python -m processor_pipeline.new_core.tests.test_graph
@@ -61,29 +85,36 @@ if __name__ == "__main__":
                 Node(
                     processor_class_name="HasherProcessor", 
                     processor_unique_name="hasher_processor_1"),
+                Node(
+                    processor_class_name="HasherProcessor2", 
+                    processor_unique_name="hasher_processor_2"),
+
             ], edges=[
                 Edge(source_node_unique_name="chunker_processor_1", 
                     target_node_unique_name="hasher_processor_1", 
                     edge_unique_name="edge_1"),
+                Edge(source_node_unique_name="chunker_processor_1", 
+                    target_node_unique_name="hasher_processor_2", 
+                    edge_unique_name="edge_2"),
             ], processor_id = "graph_1"
         )
 
         graph.initialize()
 
 
-        async def monitor_pipe_hasher_input_task():
-            async for data in graph.processor_pipes["hasher_processor_1"].input_pipe.peek_aiter():
-                logger.info(f"[hasher processor input] monitor data: {data}")
+        # async def monitor_pipe_hasher_input_task():
+        #     async for data in graph.processor_pipes["hasher_processor_1"].input_pipe.peek_aiter():
+        #         logger.info(f"[hasher processor input] monitor data: {data}")
 
 
-        task = asyncio.create_task(monitor_pipe_hasher_input_task())
+        # task = asyncio.create_task(monitor_pipe_hasher_input_task())
 
 
-        async def monitor_pipe_hasher_output_task():
-            async for data in graph.processor_pipes["hasher_processor_1"].output_pipe.peek_aiter():
-                logger.info(f"[hasher processor output] monitor data: {data}")
+        # async def monitor_pipe_hasher_output_task():
+        #     async for data in graph.processor_pipes["hasher_processor_1"].output_pipe.peek_aiter():
+        #         logger.info(f"[hasher processor output] monitor data: {data}")
 
-        task2 = asyncio.create_task(monitor_pipe_hasher_output_task())
+        # task2 = asyncio.create_task(monitor_pipe_hasher_output_task())
 
 
         def init_generator_1():
@@ -96,11 +127,16 @@ if __name__ == "__main__":
             yield "XXXXXXXXXX"
             yield "OOOOOOOOOO"
 
-        async for data in graph.astream(init_generator_2()):
+
+        import asyncio 
+        loop = asyncio.get_event_loop()
+        loop.set_debug(True)
+
+        async for data in graph.astream("1234"):
             logger.info(f'final and final result: {data}')
 
 
-        await asyncio.gather(task, task2)
+        # await asyncio.gather(task, task2)
 
         end_time = time.time()
         logger.info(f"Time taken: {end_time - start_time} seconds")

@@ -282,6 +282,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         task_ids = []
         task_queue_dict = defaultdict(asyncio.Queue)
         output_task_message_id_queue = asyncio.Queue()
+        results = []
 
         async def process_task(data: Any, message_id: str) -> Any:
             """

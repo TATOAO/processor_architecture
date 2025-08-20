@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from loguru import logger
+from .logger import logger
 from .core_interfaces import PipeInterface, PipeMeta
 from typing import Any, Optional, Dict, AsyncGenerator, List, Tuple, Set
 from pydantic import BaseModel
@@ -37,10 +37,10 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
             self._pipe_id = pipe_id
 
         self.queue = asyncio.Queue(maxsize)
-        self.logger = logger or logger.bind(name=self._pipe_id)
+        self.logger = logger or logger.bind(object_name=self._pipe_id)
         # ensure logger has default session_id to avoid formatting issues when not bound
         try:
-            self.logger = self.logger.bind(session_id="-")
+            self.logger = self.logger.bind(session_id="-", object_name=self._pipe_id)
         except Exception:
             pass
         
@@ -73,7 +73,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
             return
             
         message_id = self.generate_random_message_id(data)
-        self.logger.debug(f"[{self._pipe_id}] [PUT] data: {data} with message_id: {message_id}")
+        self.logger.debug(f"[PUT] data: {data} with message_id: {message_id}")
         
         # Put data in main queue
         await self.queue.put((message_id, data))
@@ -88,9 +88,10 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
         self.statistics.historic_get_count += 1
         data = await self.queue.get()
         if data is None:
+            self.logger.debug("[GET] data is None, Closing pipe")
             return None
         message_id, data = data
-        self.logger.debug(f"[{self._pipe_id}] [GET] data: {data} with message_id: {message_id}")
+        self.logger.debug(f"[GET] data: {data} with message_id: {message_id}")
         return (message_id, data)
 
     async def __aiter__(self) -> AsyncGenerator[Any, None]:
@@ -123,7 +124,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
                 raise ValueError(f"Observer {observer_id} already exists")
             self._observers[observer_id] = asyncio.Queue()
         
-        self.logger.debug(f"[{self._pipe_id}] Registered observer: {observer_id}")
+        self.logger.debug(f"[REGISTERED OBSERVER] {observer_id}")
         return observer_id
 
     async def unregister_observer(self, observer_id: str) -> None:
@@ -133,7 +134,7 @@ class AsyncPipe(PipeInterface, metaclass=PipeMeta):
                 # Close the observer queue
                 self._observers[observer_id].put_nowait(None)
                 del self._observers[observer_id]
-                self.logger.debug(f"[{self._pipe_id}] Unregistered observer: {observer_id}")
+                self.logger.debug(f"[UNREGISTERED OBSERVER] {observer_id}")
 
     async def peek_aiter(self, observer_id: Optional[str] = None) -> AsyncGenerator[Any, None]:
         """Create an async iterator for peeking without consuming from main queue"""
@@ -266,7 +267,7 @@ class BlockingPipe(AsyncPipe):
         if data is None:
             return None
         message_id, data = data
-        self.logger.debug(f"[{self._pipe_id}] [GET] data: {data} with message_id: {message_id}")
+        self.logger.debug(f"[GET] data: {data} with message_id: {message_id}")
         return (message_id, data)
 
 

@@ -70,14 +70,14 @@ class GraphBase(AsyncProcessor):
         self.node_init_variables: Dict[str, Any] = {}
 
 
-    async def dynamic_fan_in_pipes_task(self, node: Node):
+    def dynamic_fan_in_pipes_task(self, node: Node):
         """
         Fan in pipes for a node.
         """
         precious_nodes = get_previous_nodes(self.nx_graph, node.processor_unique_name)
 
         if len(precious_nodes) == 0:
-            return
+            return asyncio.sleep(0)
 
         previous_input_pipes = [
             self.processor_pipes[previous_node.processor_unique_name].output_pipe 
@@ -87,12 +87,12 @@ class GraphBase(AsyncProcessor):
             self._fan_in_pipes(
                 previous_input_pipes, 
                 self.processor_pipes[node.processor_unique_name].input_pipe), 
-            name=f"fan_in_pipes_task_{node.processor_unique_name}_to_{'='.join([previous_node.processor_unique_name for previous_node in precious_nodes])}"
+            name=f"fan_in_pipes_task__from_{'='.join([previous_node.processor_unique_name for previous_node in precious_nodes])} to {node.processor_unique_name}"
         )
 
-        await task
+        return task
 
-    async def dynamic_fan_out_pipes_task(self, node: Node):
+    def dynamic_fan_out_pipes_task(self, node: Node):
         """
         Fan out pipes for a node.
         """
@@ -112,19 +112,10 @@ class GraphBase(AsyncProcessor):
                 ),
                 name=f"fan_out_pipes_task_{node.processor_unique_name}_to_{'='.join([next_node.processor_unique_name for next_node in next_nodes])}"
             )
-            await task
+            return task
         else:
-            await asyncio.sleep(0)
+            return asyncio.sleep(0)
             
-
-
-    async def add_processor_into_graph(self, node: Node):
-        self.initialize_node(node)
-        # merge input pipes
-        self.background_tasks.append(self.dynamic_fan_in_pipes_task(node))
-        # merge output pipes
-        self.background_tasks.append(self.dynamic_fan_out_pipes_task(node))
-
 
     def initialize(self):
 
@@ -149,24 +140,33 @@ class GraphBase(AsyncProcessor):
 
 
 
-        for node in self.nodes:
-            # merge input pipes
-            self.background_tasks.append(self.dynamic_fan_in_pipes_task(node))
-
-            # merge output pipes
-            self.background_tasks.append(self.dynamic_fan_out_pipes_task(node))
 
         
         root_node = get_root_nodes(self.nx_graph)[0]
         
         # Create graph's own input pipe (separate from root node's input pipe)
+    
+        async def root_task():
+            await self._fan_in_pipes(
+                [self.input_pipe], 
+                self.processor_pipes[root_node.processor_unique_name].input_pipe
+            )
+            self.logger.warning("Graph pipe into root input pipe task completed")
+
         graph_pipe_into_root_input_pipe_task = asyncio.create_task(
-            self._fan_out_pipes(
-                self.input_pipe, 
-                [self.processor_pipes[root_node.processor_unique_name].input_pipe]
-            ),
+            root_task(),
             name="graph_pipe_into_root_input_pipe_task"
         )
+        self.background_tasks.append(graph_pipe_into_root_input_pipe_task)
+
+
+        for node in self.nodes:
+            # merge input pipes
+            self.background_tasks.append(self.dynamic_fan_in_pipes_task(node))
+
+            # # merge output pipes
+            # self.background_tasks.append(self.dynamic_fan_out_pipes_task(node))
+
 
 
         # create the task for all leaf nodes
@@ -180,8 +180,7 @@ class GraphBase(AsyncProcessor):
             name="leaf_nodes_output_pipe_task"
         )
 
-        self.background_tasks.insert(0, graph_pipe_into_root_input_pipe_task)
-        self.background_tasks.insert(0, leaf_nodes_output_pipe_task)
+        self.background_tasks.append(leaf_nodes_output_pipe_task)
         self.logger.info(f"Graph initialized: {self.processor_id}, {self.background_tasks}")
 
 
@@ -217,14 +216,13 @@ class GraphBase(AsyncProcessor):
         """Merge multiple input pipes into a single output pipe using asyncio.as_completed"""
         async def read_pipe_task(pipe):
             """Read all data from a single pipe"""
-            # import ipdb; ipdb.set_trace()
             async for message_id, data in pipe:
                 self.logger.info(f"Fan in pipe: {data}: from {pipe._pipe_id} to {output_pipe._pipe_id}")
                 if data is None:
-                    await output_pipe.put(data)
                     break
                 await output_pipe.put(data)
         
+
         try:
             # Create tasks for reading from each input pipe
             tasks = [asyncio.create_task(read_pipe_task(pipe), name=f"read_pipe_task_{pipe._pipe_id}") for pipe in input_pipes]
@@ -258,7 +256,9 @@ class GraphBase(AsyncProcessor):
             # import ipdb; ipdb.set_trace()
             for pipe in output_pipes:
                 try:
+                    self.logger.info(f"Fan out pipe: None: from {source_pipe._pipe_id} to {pipe._pipe_id}")
                     await pipe.put(None)
+
                 except Exception as e:
                     self.logger.error(f"Error signaling end-of-stream to pipe {getattr(pipe, '_pipe_id', 'unknown')}: {e}")
 
@@ -318,8 +318,13 @@ class GraphBase(AsyncProcessor):
                 tasks.append(task)
 
             # Wait for all processors to complete
-            await asyncio.gather(*self.background_tasks)
             await asyncio.gather(*tasks)
+            
+            # Close input pipe to signal end-of-stream to background tasks
+            await self.input_pipe.close()
+            
+            self.logger.warning(f"Graph background tasks: {self.background_tasks}")
+            await asyncio.gather(*self.background_tasks)
 
 
         except Exception as e:
@@ -327,7 +332,7 @@ class GraphBase(AsyncProcessor):
             self.logger.error(traceback.format_exc())
             caught_exception = e
         finally:
-            await self.input_pipe.close()
+            # Input pipe is already closed above, only close output pipe here
             await self.output_pipe.close()
             if caught_exception:
                 raise caught_exception

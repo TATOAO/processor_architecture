@@ -9,35 +9,7 @@ from .core_interfaces import ProcessorInterface, PipeInterface, ProcessorMeta
 from .pipe import BufferPipe
 from pydantic import BaseModel, computed_field
 from threading import Thread
-from loguru import logger
-
-# Configure loguru for better formatting and control
-def _ensure_session_id(record):
-    # Always provide a default session_id for formatting
-    record["extra"].setdefault("session_id", "-")
-    # Optional suffix to distinguish different inputs within the same session
-    record["extra"].setdefault("sid_suffix", "")
-    return True
-
-logger.remove()  # Remove default handler
-logger.add(
-    "logs/processor_pipeline.log",
-    rotation="10 MB",
-    retention="7 days",
-    level="INFO",
-    # Include session_id in all log lines
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | sid={extra[session_id]}{extra[sid_suffix]} | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-    backtrace=True,
-    diagnose=True,
-    filter=_ensure_session_id,
-)
-logger.add(
-    lambda msg: print(msg, end=""),
-    level="DEBUG",
-    format="<green>{time:HH:mm:ss}</green> | sid={extra[session_id]}{extra[sid_suffix]} | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
-    colorize=True,
-    filter=_ensure_session_id,
-)
+from .logger import logger
 
 
 class ProcessorStatistics(BaseModel):
@@ -112,6 +84,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         # Get pipe types from meta (defaults are now set in ProcessorMeta)
         self.input_pipe_type = meta["input_pipe_type"]
         self.output_pipe_type = meta["output_pipe_type"]
+        self.background_tasks: List[asyncio.Task] = []
 
             
         self.semaphore = asyncio.Semaphore(max_concurrent)
@@ -122,10 +95,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         # statistics
         self._statistics = ProcessorStatistics()
 
-        self.background_tasks: List[asyncio.Task] = []
         
         # Debug logging for initialization
-        self.logger = logger
+        self.logger = logger.bind(object_name=self.processor_id)
         self.logger.debug(f"Initialized processor {self.processor_id} with output_strategy={self.output_strategy.value}, max_concurrent={max_concurrent}")
         self.logger.debug(f"Processor meta: {meta}")
 
@@ -138,17 +110,17 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             self.session = {"session_id": session_id}
 
         # Bind logger for this processor
-        self.logger = self.logger.bind(session_id=session_id)
+        self.logger = self.logger.bind(session_id=session_id, object_name=self.processor_id)
 
         # Bind logger for pipes if available
         if getattr(self, "input_pipe", None) is not None and getattr(self.input_pipe, "logger", None) is not None:
             try:
-                self.input_pipe.logger = self.input_pipe.logger.bind(session_id=session_id)
+                self.input_pipe.logger = self.input_pipe.logger.bind(session_id=session_id, object_name=self.input_pipe._pipe_id)
             except Exception:
                 pass
         if getattr(self, "output_pipe", None) is not None and getattr(self.output_pipe, "logger", None) is not None:
             try:
-                self.output_pipe.logger = self.output_pipe.logger.bind(session_id=session_id)
+                self.output_pipe.logger = self.output_pipe.logger.bind(session_id=session_id, object_name=self.output_pipe._pipe_id)
             except Exception:
                 pass
 
@@ -406,10 +378,11 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         self.bind_session_id(session_id)
 
         self.logger.info(f"Starting execute for {self.processor_id} with output strategy: {self.output_strategy.value}")
-        
+
         # Determine intake method based on data type
         if data is AsyncGenerator or inspect.isasyncgenfunction(data) or hasattr(data, '__aiter__'):
             generator = data
+
             async def intake_method():
                 item_count = 0
                 async for item in generator:
@@ -431,9 +404,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
             intake_task = asyncio.create_task(asyncio.sleep(0))
         else:
             # a one time intake input
-            intake_task1 = asyncio.create_task(self.input_pipe.put(data))
-            intake_task2 = asyncio.create_task(self.input_pipe.put(None))
-            intake_task = asyncio.gather(intake_task1, intake_task2)
+            intake_task = asyncio.create_task(self.input_pipe.put(data))
         
         # Create main processing task based on output strategy
         if self.output_strategy == OutputStrategy.ASAP:
@@ -446,7 +417,7 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         else:
             raise ValueError(f"Invalid output strategy: {self.output_strategy}")
         
-        _, result, *_ = await asyncio.gather(intake_task, main_task, *self.background_tasks)
+        _, result = await asyncio.gather(intake_task, main_task)
         self.logger.info(f"Execute completed for {self.processor_id}")
         return result
 

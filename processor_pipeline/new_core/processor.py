@@ -418,10 +418,30 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
         else:
             raise ValueError(f"Invalid output strategy: {self.output_strategy}")
         
-        _, result = await asyncio.gather(intake_task, main_task)
-        await self.output_pipe.put(None)
-        self.logger.info(f"Execute completed for {self.processor_id}")
+        try:
+            _, result = await asyncio.gather(intake_task, main_task)
+            self.logger.info(f"Execute completed for {self.processor_id}")
+        
+        except Exception as e:
+            self.logger.error(f"Error in processor {self.processor_id}: {e}")
+            self.logger.error(traceback.format_exc())
+            raise e
+        finally:
+            await self.output_pipe.put(None)
+            try:
+                await asyncio.gather(*self.background_tasks)
+            except Exception as e:
+                self.logger.error(f"Error in processor {self.processor_id}: {e}")
+                self.logger.error(traceback.format_exc())
+                raise e
+
         return result
+    
+    def add_background_task(self, task: asyncio.Task) -> None:
+        """
+        Add a background task to the processor.
+        """
+        self.background_tasks.append(task)
 
     async def initialize(self) -> None:
         """Initialize the processor and start merger/broadcaster tasks if there are registered pipes"""

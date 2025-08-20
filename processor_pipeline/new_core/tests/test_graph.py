@@ -84,17 +84,17 @@ if __name__ == "__main__":
                 Node(
                     processor_class_name="HasherProcessor", 
                     processor_unique_name="hasher_processor_1"),
-                # Node(
-                #     processor_class_name="HasherProcessor2", 
-                #     processor_unique_name="hasher_processor_2"),
+                Node(
+                    processor_class_name="HasherProcessor2", 
+                    processor_unique_name="hasher_processor_2"),
 
             ], edges=[
                 Edge(source_node_unique_name="chunker_processor_1", 
                     target_node_unique_name="hasher_processor_1", 
                     edge_unique_name="edge_1"),
-                # Edge(source_node_unique_name="chunker_processor_1", 
-                #     target_node_unique_name="hasher_processor_2", 
-                #     edge_unique_name="edge_2"),
+                Edge(source_node_unique_name="chunker_processor_1", 
+                    target_node_unique_name="hasher_processor_2", 
+                    edge_unique_name="edge_2"),
             ], processor_id = "graph_1"
         )
 

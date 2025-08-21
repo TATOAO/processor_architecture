@@ -58,7 +58,9 @@ class AsyncProcessor(ProcessorInterface, metaclass=ProcessorMeta):
     def __init__(self, 
             processor_id: Optional[str] = None, 
             output_strategy: str = None,
-            max_concurrent: int = None):
+            max_concurrent: int = None,
+            **kwargs
+            ):
 
         # global dict to store things across all processors
         self.session = {}

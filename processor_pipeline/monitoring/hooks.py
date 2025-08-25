@@ -8,7 +8,7 @@ import uuid
 from typing import Any, Dict, Optional, Set
 from functools import wraps
 
-from ..new_core.core_interfaces import ProcessorInterface, PipeInterface
+from ..core.core_interfaces import ProcessorInterface, PipeInterface
 from .models import (
     MonitoringEvent, EventType, ProcessorStatus, 
     MonitoringConfig, ProcessorInfo, PipeInfo
@@ -292,3 +292,176 @@ class MonitoringHooks:
             return summary
         except Exception:
             return {"type": type(data).__name__, "error": "Could not summarize"}
+
+
+# python -m processor_pipeline.monitoring.hooks
+if __name__ == "__main__":
+    import asyncio
+    from ..core.graph import GraphBase, Node, Edge
+    from ..core.processor import AsyncProcessor
+
+    class MyProcessor(AsyncProcessor):
+        meta = {
+            "name": "MyProcessor",
+            "description": "My Processor that calculates string length",
+            "version": "1.0.0"
+        }
+        async def process(self, data: Any, *args, **kwargs) -> Any:
+            """Process input data and yield its length twice"""
+            print(f"MyProcessor processing: {data}")
+            await asyncio.sleep(5)  # Simulate some processing time
+            length = len(str(data))
+            yield length
+            await asyncio.sleep(5)  # Simulate some processing time
+            yield length
+    
+    class MyProcessor2(AsyncProcessor):
+        meta = {
+            "name": "MyProcessor2", 
+            "description": "My Processor that processes numbers",
+            "version": "1.0.0"
+        }
+        async def process(self, data: Any, *args, **kwargs) -> Any:
+            """Process numeric input and yield first value and doubled value"""
+            print(f"MyProcessor2 processing: {data}")
+            await asyncio.sleep(5)  # Simulate some processing time
+            yield data
+            await asyncio.sleep(5)  # Simulate some processing time
+            yield data * 2
+    
+
+    async def run_monitoring_example():
+        """Complete example showing how monitoring hooks work"""
+        print("🔧 Setting up processors and graph...")
+        
+        # Create nodes and edges for the graph
+        nodes = [
+            Node(
+                processor_class_name="MyProcessor",
+                processor_unique_name="MyProcessor",
+            ),
+            Node(
+                processor_class_name="MyProcessor2",
+                processor_unique_name="MyProcessor2",
+            ),
+        ]
+
+        edges = [
+            Edge(
+                source_node_unique_name="MyProcessor",
+                target_node_unique_name="MyProcessor2",
+                edge_unique_name="MyProcessor_to_MyProcessor2",
+            ),
+        ]
+
+        # Create the graph
+        graph = GraphBase(nodes=nodes, edges=edges)
+        graph.initialize()
+        print(f"✅ Created graph with {len(graph.processors)} processors")
+        
+        # Setup monitoring configuration
+        config = MonitoringConfig(
+            session_name="hooks_example_session",
+            collect_input_data=True,
+            collect_output_data=True,
+            metrics_interval=2.0,  # Collect metrics every 2 seconds
+            web_ui_url="http://localhost:3000",
+            api_url="http://localhost:8000"
+        )
+        
+        # Create monitoring client and hooks
+        client = MonitoringClient(config)
+        monitoring_hooks = MonitoringHooks(config, client)
+        
+        print("🔗 Registering processors and pipes for monitoring...")
+        
+        # Register all processors for monitoring
+        for processor_id, processor in graph.processors.items():
+            monitoring_hooks.register_processor(processor)
+            print(f"  📊 Registered processor: {processor_id}")
+
+        # Register all pipes for monitoring
+        for processor_id, pipes in graph.processor_pipes.items():
+            if hasattr(pipes, 'input_pipe') and pipes.input_pipe:
+                monitoring_hooks.register_pipe(
+                    pipes.input_pipe, 
+                    target_processor=processor_id
+                )
+                print(f"  🔄 Registered input pipe for: {processor_id}")
+            if hasattr(pipes, 'output_pipe') and pipes.output_pipe:
+                monitoring_hooks.register_pipe(
+                    pipes.output_pipe,
+                    source_processor=processor_id
+                )
+                print(f"  🔄 Registered output pipe for: {processor_id}")
+
+        try:
+            print("\n🚀 Starting monitoring...")
+            await monitoring_hooks.start()
+            print(f"📊 Monitoring session started: {monitoring_hooks.session_name}")
+            print(f"🆔 Session ID: {monitoring_hooks.session_id}")
+            
+            # Test data to process
+            test_inputs = [
+                "Hello World!",
+                "Python Programming", 
+                "Monitoring Hooks Demo",
+                [1, 2, 3, 4, 5]
+            ]
+            
+            print("\n🔄 Processing test data through the graph...")
+            
+            # Execute the graph with test data
+            results = []
+            async for result in graph.astream(test_inputs):
+                results.append(result)
+                print(f"📤 Output: {result}")
+            
+            print(f"✅ Completed processing, got {len(results)} results")
+            
+            # Small delay between tests
+            await asyncio.sleep(0.5)
+                    
+            
+            # Let metrics collection run for a bit
+            print("\n⏳ Letting metrics collection run...")
+            await asyncio.sleep(3)
+            
+            # Show some collected metrics
+            print("\n📈 Current Metrics:")
+            all_metrics = monitoring_hooks.metrics_collector.get_all_metrics()
+            for processor_id, metrics in all_metrics.items():
+                print(f"  {processor_id}:")
+                print(f"    - Total processed: {metrics.total_processed}")
+                print(f"    - Avg processing time: {metrics.processing_time_avg:.3f}s")
+                print(f"    - Throughput: {metrics.throughput:.2f} items/sec")
+                print(f"    - Error count: {metrics.error_count}")
+            
+            # Show session info
+            print("\n📊 Session Info:")
+            session_info = monitoring_hooks.session_tracker.get_session_info()
+            print(f"  - Duration: {session_info['duration']:.2f}s")
+            print(f"  - Total events: {session_info['total_events']}")
+            print(f"  - Processors: {len(session_info['processors'])}")
+            print(f"  - Pipes: {len(session_info['pipes'])}")
+            
+        except Exception as e:
+            print(f"❌ Error during monitoring: {e}")
+            
+        finally:
+            print("\n🛑 Stopping monitoring...")
+            await monitoring_hooks.stop()
+            print("✅ Monitoring stopped successfully")
+
+    # Register the processor classes so they can be found by the graph
+    import sys
+    current_module = sys.modules[__name__]
+    setattr(current_module, 'MyProcessor', MyProcessor)
+    setattr(current_module, 'MyProcessor2', MyProcessor2)
+    
+    # Run the complete example
+    print("🎯 Starting Monitoring Hooks Example")
+    print("=" * 50)
+    asyncio.run(run_monitoring_example())
+    print("=" * 50)
+    print("🎉 Example completed!")

@@ -6,9 +6,9 @@ import asyncio
 import uuid
 from typing import Any, AsyncGenerator, List, Optional, Union
 
-from ..new_core.core_interfaces import ProcessorInterface
-from ..new_core.pipeline import AsyncPipeline
-from ..new_core.graph import GraphBase
+from ..core.core_interfaces import ProcessorInterface
+from ..core.pipeline import AsyncPipeline
+from ..core.graph import GraphBase
 from .models import MonitoringConfig
 from .client import MonitoringClient
 from .hooks import MonitoringHooks
